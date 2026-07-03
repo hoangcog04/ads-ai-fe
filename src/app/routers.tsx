@@ -10,7 +10,7 @@ export function AppRouters() {
     <BrowserRouter>
       <Routes>
         {/* Redirect */}
-        <Route path={ROUTES.ROOT} element={<Navigate to={ROUTES.PRODUCT} />} />k
+        <Route path={ROUTES.ROOT} element={<Navigate to={ROUTES.PRODUCT} />} />
         {/* Not Found */}
         <Route path="*" element={<NotFoundPage />} />
         {/* Login */}
