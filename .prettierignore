@@ -1,0 +1,13 @@
+node_modules/
+dist/
+.env
+cache
+.cache
+package.json
+package-lock.json
+public
+CHANGELOG.md
+.yarn
+.next
+build
+.contentlayer
