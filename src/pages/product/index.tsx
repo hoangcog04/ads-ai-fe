@@ -145,6 +145,8 @@ function ProductPage() {
             <div className="mt-1 flex flex-wrap gap-2 text-xs text-zinc-500">
               <span>{project.aspectRatio}</span>
               <span>{project.targetDurationSec}s</span>
+              <span>voice: {project.voiceLanguage}</span>
+              <span>overlay: {project.overlayEnabled ? "on" : "off"}</span>
               <span>{project.status}</span>
             </div>
           </div>
@@ -219,6 +221,8 @@ function BriefPanel({
     productContext?: string
     aspectRatio: string
     targetDurationSec: number
+    voiceLanguage: string
+    overlayEnabled: boolean
     productImage: File
   }) => void
 }) {
@@ -227,6 +231,8 @@ function BriefPanel({
   const [productContext, setProductContext] = useState("")
   const [aspectRatio, setAspectRatio] = useState("9:16")
   const [targetDurationSec, setTargetDurationSec] = useState(20)
+  const [voiceLanguage, setVoiceLanguage] = useState("vi")
+  const [overlayEnabled, setOverlayEnabled] = useState(false)
   const [productImage, setProductImage] = useState<File | null>(null)
 
   return (
@@ -241,6 +247,8 @@ function BriefPanel({
           productContext,
           aspectRatio,
           targetDurationSec,
+          voiceLanguage,
+          overlayEnabled,
           productImage,
         })
       }}
@@ -274,7 +282,7 @@ function BriefPanel({
           onChange={(event) => setProductContext(event.target.value)}
         />
       </label>
-      <div className="grid gap-3 sm:grid-cols-3">
+      <div className="grid gap-3 sm:grid-cols-4">
         <label className="grid gap-1 text-sm">
           <span className="font-medium">Ratio</span>
           <select
@@ -302,6 +310,17 @@ function BriefPanel({
           </select>
         </label>
         <label className="grid gap-1 text-sm">
+          <span className="font-medium">Voice language</span>
+          <select
+            className="h-10 rounded-md border border-zinc-300 px-3"
+            value={voiceLanguage}
+            onChange={(event) => setVoiceLanguage(event.target.value)}
+          >
+            <option value="vi">Tiếng Việt</option>
+            <option value="en">English</option>
+          </select>
+        </label>
+        <label className="grid gap-1 text-sm">
           <span className="font-medium">Product image</span>
           <input
             className="h-10 rounded-md border border-zinc-300 px-3 py-2"
@@ -312,6 +331,14 @@ function BriefPanel({
           />
         </label>
       </div>
+      <label className="flex w-fit items-center gap-2 text-sm">
+        <input
+          type="checkbox"
+          checked={overlayEnabled}
+          onChange={(event) => setOverlayEnabled(event.target.checked)}
+        />
+        <span className="font-medium">Enable overlay text</span>
+      </label>
       {error && <p className="text-sm text-red-600">{error}</p>}
       <Button className="w-fit" disabled={isSubmitting || !brief || !productImage}>
         {isSubmitting ? <Loader2 className="animate-spin" /> : <Upload />}
@@ -448,6 +475,7 @@ function SceneList({
         <SceneCard
           key={`${scene.id}-${scene.updatedAt}`}
           scene={scene}
+          overlayEnabled={project.overlayEnabled}
           task={latestTaskByTarget.get(`AdScene:${scene.id}`)}
           onSaved={onSaved}
           onRewriteScene={onRewriteScene}
@@ -463,6 +491,7 @@ function SceneList({
 
 function SceneCard({
   scene,
+  overlayEnabled,
   task,
   onSaved,
   onRewriteScene,
@@ -472,6 +501,7 @@ function SceneCard({
   onRefresh,
 }: {
   scene: AdScene
+  overlayEnabled: boolean
   task?: AdGenerationTask
   onSaved: (project: AdProject) => void
   onRewriteScene: (sceneId: string, instruction: string) => void
@@ -490,6 +520,7 @@ function SceneCard({
     composition: scene.composition || "",
     voiceLine: scene.voiceLine || "",
     onScreenText: scene.onScreenText || "",
+    keyframePrompt: scene.keyframePrompt || "",
   })
   const [videoPromptDraft, setVideoPromptDraft] = useState(
     scene.finalVideoPrompt || ""
@@ -563,11 +594,12 @@ function SceneCard({
               }
             />
             <TextField
-              label="Overlay"
+              label={overlayEnabled ? "Overlay" : "Overlay disabled"}
               value={draft.onScreenText}
               onChange={(onScreenText) =>
                 setDraft((prev) => ({ ...prev, onScreenText }))
               }
+              disabled={!overlayEnabled}
             />
             <TextField
               label="Camera shot"
@@ -635,6 +667,28 @@ function SceneCard({
               <Sparkles />
               Rewrite Scene
             </Button>
+          </div>
+          <div className="grid gap-2 rounded-md border border-zinc-200 p-2">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <span className="text-xs font-semibold text-zinc-600">
+                Keyframe prompt
+              </span>
+              {scene.keyframePromptStale && (
+                <span className="rounded-md bg-amber-50 px-2 py-1 text-xs font-medium text-amber-700">
+                  Needs keyframe
+                </span>
+              )}
+            </div>
+            <textarea
+              className="min-h-28 rounded-md border border-zinc-300 p-2 text-xs leading-5 text-zinc-900"
+              value={draft.keyframePrompt}
+              onChange={(event) =>
+                setDraft((prev) => ({
+                  ...prev,
+                  keyframePrompt: event.target.value,
+                }))
+              }
+            />
           </div>
           <div className="grid gap-2 rounded-md border border-zinc-200 p-2">
             <div className="flex flex-wrap items-center justify-between gap-2">
@@ -760,16 +814,19 @@ function TextField({
   label,
   value,
   onChange,
+  disabled = false,
 }: {
   label: string
   value: string
   onChange: (value: string) => void
+  disabled?: boolean
 }) {
   return (
     <label className="grid gap-1 text-xs font-medium text-zinc-600">
       {label}
       <input
         className="h-9 rounded-md border border-zinc-300 px-2 text-sm text-zinc-900"
+        disabled={disabled}
         value={value}
         onChange={(event) => onChange(event.target.value)}
       />

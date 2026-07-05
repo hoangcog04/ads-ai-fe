@@ -38,6 +38,7 @@ export type AdScene = {
   voiceLine?: string | null
   onScreenText?: string | null
   keyframePrompt?: string | null
+  keyframePromptStale: boolean
   finalVideoPrompt?: string | null
   finalVideoPromptStale: boolean
   negativeRules?: string[] | null
@@ -71,6 +72,8 @@ export type AdProject = {
   productContext?: string | null
   aspectRatio: string
   targetDurationSec: number
+  voiceLanguage: string
+  overlayEnabled: boolean
   status: string
   productAnalysis?: Record<string, unknown> | null
   finalVideoUrl?: string | null
@@ -85,5 +88,7 @@ export type CreateAdProjectPayload = {
   productContext?: string
   aspectRatio: string
   targetDurationSec: number
+  voiceLanguage: string
+  overlayEnabled: boolean
   productImage: File
 }

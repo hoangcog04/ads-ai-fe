@@ -10,6 +10,8 @@ export async function createAdProject(payload: CreateAdProjectPayload) {
   formData.append("brief", payload.brief)
   formData.append("aspectRatio", payload.aspectRatio)
   formData.append("targetDurationSec", String(payload.targetDurationSec))
+  formData.append("voiceLanguage", payload.voiceLanguage)
+  formData.append("overlayEnabled", String(payload.overlayEnabled))
   formData.append("productImage", payload.productImage)
   if (payload.title) formData.append("title", payload.title)
   if (payload.productContext) {
