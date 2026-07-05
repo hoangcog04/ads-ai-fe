@@ -33,6 +33,7 @@ import type {
 } from "@/types/ads"
 
 const PROJECT_STORAGE_KEY = "adsMvpProjectId"
+const TARGET_DURATION_OPTIONS_SEC = [15, 20, 30]
 
 function ProductPage() {
   const [projectId, setProjectId] = useState(() =>
@@ -225,7 +226,7 @@ function BriefPanel({
   const [title, setTitle] = useState("")
   const [productContext, setProductContext] = useState("")
   const [aspectRatio, setAspectRatio] = useState("9:16")
-  const [targetDurationSec, setTargetDurationSec] = useState(45)
+  const [targetDurationSec, setTargetDurationSec] = useState(20)
   const [productImage, setProductImage] = useState<File | null>(null)
 
   return (
@@ -288,14 +289,17 @@ function BriefPanel({
         </label>
         <label className="grid gap-1 text-sm">
           <span className="font-medium">Duration</span>
-          <input
+          <select
             className="h-10 rounded-md border border-zinc-300 px-3"
-            min={10}
-            max={60}
-            type="number"
             value={targetDurationSec}
             onChange={(event) => setTargetDurationSec(Number(event.target.value))}
-          />
+          >
+            {TARGET_DURATION_OPTIONS_SEC.map((seconds) => (
+              <option key={seconds} value={seconds}>
+                {seconds}s
+              </option>
+            ))}
+          </select>
         </label>
         <label className="grid gap-1 text-sm">
           <span className="font-medium">Product image</span>
@@ -479,7 +483,6 @@ function SceneCard({
   const [rewriteInstruction, setRewriteInstruction] = useState("")
   const [draft, setDraft] = useState({
     title: scene.title,
-    durationSec: scene.durationSec,
     visualAction: scene.visualAction,
     productMoment: scene.productMoment || "",
     cameraShot: scene.cameraShot || "",
