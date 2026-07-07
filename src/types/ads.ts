@@ -12,12 +12,51 @@ export type AdAsset = {
   type: AdAssetType
   name: string
   description?: string | null
+  kind?: string | null
+  visualDescription?: string | null
+  lockPrompt?: string | null
+  useWhen?: string | null
+  isPrimary: boolean
   imagePrompt?: string | null
   consistencyPrompt?: string | null
   imageUrl?: string | null
   candidateImages?: string[] | null
   isLocked: boolean
   status: "PENDING" | "READY" | "FAILED"
+}
+
+export type AdVoiceLine = {
+  speaker: string
+  timing?: string | null
+  actionState?: string | null
+  emotion?: string | null
+  delivery?: string | null
+  line: string
+}
+
+export type AdKeyframeCandidate = {
+  id: string
+  slotId: string
+  storageKey: string
+  imageUrl: string
+  mimeType?: string | null
+  warning?: string | null
+}
+
+export type AdKeyframePromptSlot = {
+  id: string
+  sceneId: string
+  slotIndex: number
+  stableKey: string
+  label: string
+  timing?: string | null
+  purpose: string
+  prompt: string
+  productReferenceIds?: string[] | null
+  stale: boolean
+  selectedCandidateId?: string | null
+  selectedCandidate?: AdKeyframeCandidate | null
+  candidates: AdKeyframeCandidate[]
 }
 
 export type AdScene = {
@@ -36,9 +75,12 @@ export type AdScene = {
   composition?: string | null
   cameraAlternatives?: string[] | null
   voiceLine?: string | null
+  voiceLines?: AdVoiceLine[] | null
+  ambientAudio?: string | null
   onScreenText?: string | null
   keyframePrompt?: string | null
   keyframePromptStale: boolean
+  keyframePromptSlots: AdKeyframePromptSlot[]
   finalVideoPrompt?: string | null
   finalVideoPromptStale: boolean
   negativeRules?: string[] | null
@@ -87,8 +129,9 @@ export type CreateAdProjectPayload = {
   title?: string
   productContext?: string
   aspectRatio: string
-  targetDurationSec: number
+  targetDurationSec?: number
   voiceLanguage: string
   overlayEnabled: boolean
-  productImage: File
+  productImage?: File
+  productImages: File[]
 }

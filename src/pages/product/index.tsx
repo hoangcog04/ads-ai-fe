@@ -5,6 +5,7 @@ import {
   Film,
   ImageIcon,
   Loader2,
+  Plus,
   RefreshCw,
   Save,
   Sparkles,
@@ -13,27 +14,41 @@ import {
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
+  addProductReference,
   createAdProject,
   generateAsset,
   generateKeyframe,
+  generateKeyframeSlot,
   generateVideo,
   getAdProject,
+  regenerateSceneVideoPrompt,
   rewriteScene,
   runAdPlan,
-  selectKeyframe,
-  regenerateSceneVideoPrompt,
+  selectKeyframeSlotCandidate,
+  updateKeyframePromptSlot,
+  updateProductReference,
   updateScene,
   updateSceneVideoPrompt,
 } from "@/services/ads"
 import type {
   AdAsset,
   AdGenerationTask,
+  AdKeyframePromptSlot,
   AdProject,
   AdScene,
+  AdVoiceLine,
 } from "@/types/ads"
 
 const PROJECT_STORAGE_KEY = "adsMvpProjectId"
-const TARGET_DURATION_OPTIONS_SEC = [15, 20, 30]
+const PRODUCT_KIND_OPTIONS = [
+  "app_screen",
+  "physical_product",
+  "packaging",
+  "logo",
+  "usage_photo",
+  "before_after",
+  "other",
+]
 
 function ProductPage() {
   const [projectId, setProjectId] = useState(() =>
@@ -83,17 +98,9 @@ function ProductPage() {
     onSuccess: refreshProject,
   })
 
-  const keyframeMutation = useMutation({
+  const legacyKeyframeMutation = useMutation({
     mutationFn: generateKeyframe,
     onSuccess: refreshProject,
-  })
-
-  const selectKeyframeMutation = useMutation({
-    mutationFn: ({ sceneId, imageUrl }: { sceneId: string; imageUrl: string }) =>
-      selectKeyframe(sceneId, imageUrl),
-    onSuccess: (updated) => {
-      queryClient.setQueryData(["ads-project", updated.id], updated)
-    },
   })
 
   const videoMutation = useMutation({
@@ -131,7 +138,7 @@ function ProductPage() {
     )
   }
 
-  const product = project.assets.find((asset) => asset.type === "PRODUCT")
+  const productRefs = project.assets.filter((asset) => asset.type === "PRODUCT")
   const character = project.assets.find((asset) => asset.type === "CHARACTER")
   const location = project.assets.find((asset) => asset.type === "LOCATION")
   const isPlanRunning = isRunning(latestTaskByTarget.get(`AdProject:${project.id}`))
@@ -144,7 +151,6 @@ function ProductPage() {
             <h1 className="text-xl font-semibold">{project.title || "Ads video"}</h1>
             <div className="mt-1 flex flex-wrap gap-2 text-xs text-zinc-500">
               <span>{project.aspectRatio}</span>
-              <span>{project.targetDurationSec}s</span>
               <span>voice: {project.voiceLanguage}</span>
               <span>overlay: {project.overlayEnabled ? "on" : "off"}</span>
               <span>{project.status}</span>
@@ -164,9 +170,15 @@ function ProductPage() {
           </div>
         </header>
 
-        <section className="grid gap-4 lg:grid-cols-[280px_minmax(0,1fr)]">
+        <section className="grid gap-4 lg:grid-cols-[340px_minmax(0,1fr)]">
           <aside className="flex flex-col gap-4">
-            <ProductReference asset={product} />
+            <ProductReferencesPanel
+              projectId={project.id}
+              assets={productRefs}
+              onSaved={(updated) =>
+                queryClient.setQueryData(["ads-project", updated.id], updated)
+              }
+            />
             <ReferenceCard
               label="Character"
               asset={character}
@@ -194,11 +206,10 @@ function ProductPage() {
               onRewriteScene={(sceneId, instruction) =>
                 rewriteMutation.mutate({ sceneId, instruction })
               }
-              onGenerateKeyframe={(sceneId) => keyframeMutation.mutate(sceneId)}
-              onGenerateVideo={(sceneId) => videoMutation.mutate(sceneId)}
-              onSelectKeyframe={(sceneId, imageUrl) =>
-                selectKeyframeMutation.mutate({ sceneId, imageUrl })
+              onGenerateLegacyKeyframe={(sceneId) =>
+                legacyKeyframeMutation.mutate(sceneId)
               }
+              onGenerateVideo={(sceneId) => videoMutation.mutate(sceneId)}
               onRefresh={refreshProject}
             />
           </div>
@@ -220,36 +231,33 @@ function BriefPanel({
     title?: string
     productContext?: string
     aspectRatio: string
-    targetDurationSec: number
     voiceLanguage: string
     overlayEnabled: boolean
-    productImage: File
+    productImages: File[]
   }) => void
 }) {
   const [brief, setBrief] = useState("")
   const [title, setTitle] = useState("")
   const [productContext, setProductContext] = useState("")
   const [aspectRatio, setAspectRatio] = useState("9:16")
-  const [targetDurationSec, setTargetDurationSec] = useState(20)
   const [voiceLanguage, setVoiceLanguage] = useState("vi")
   const [overlayEnabled, setOverlayEnabled] = useState(false)
-  const [productImage, setProductImage] = useState<File | null>(null)
+  const [productImages, setProductImages] = useState<File[]>([])
 
   return (
     <form
       className="grid gap-4 rounded-lg border border-zinc-200 bg-white p-4 shadow-sm"
       onSubmit={(event) => {
         event.preventDefault()
-        if (!productImage) return
+        if (productImages.length === 0) return
         onCreate({
           brief,
           title,
           productContext,
           aspectRatio,
-          targetDurationSec,
           voiceLanguage,
           overlayEnabled,
-          productImage,
+          productImages,
         })
       }}
     >
@@ -257,14 +265,7 @@ function BriefPanel({
         <Film className="size-5" />
         <h1 className="text-lg font-semibold">Ads Video Workspace</h1>
       </div>
-      <label className="grid gap-1 text-sm">
-        <span className="font-medium">Title</span>
-        <input
-          className="h-10 rounded-md border border-zinc-300 px-3"
-          value={title}
-          onChange={(event) => setTitle(event.target.value)}
-        />
-      </label>
+      <TextField label="Title" value={title} onChange={setTitle} />
       <label className="grid gap-1 text-sm">
         <span className="font-medium">Brief</span>
         <textarea
@@ -282,7 +283,7 @@ function BriefPanel({
           onChange={(event) => setProductContext(event.target.value)}
         />
       </label>
-      <div className="grid gap-3 sm:grid-cols-4">
+      <div className="grid gap-3 sm:grid-cols-3">
         <label className="grid gap-1 text-sm">
           <span className="font-medium">Ratio</span>
           <select
@@ -296,38 +297,27 @@ function BriefPanel({
           </select>
         </label>
         <label className="grid gap-1 text-sm">
-          <span className="font-medium">Duration</span>
-          <select
-            className="h-10 rounded-md border border-zinc-300 px-3"
-            value={targetDurationSec}
-            onChange={(event) => setTargetDurationSec(Number(event.target.value))}
-          >
-            {TARGET_DURATION_OPTIONS_SEC.map((seconds) => (
-              <option key={seconds} value={seconds}>
-                {seconds}s
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="grid gap-1 text-sm">
           <span className="font-medium">Voice language</span>
           <select
             className="h-10 rounded-md border border-zinc-300 px-3"
             value={voiceLanguage}
             onChange={(event) => setVoiceLanguage(event.target.value)}
           >
-            <option value="vi">Tiếng Việt</option>
+            <option value="vi">Tieng Viet</option>
             <option value="en">English</option>
           </select>
         </label>
         <label className="grid gap-1 text-sm">
-          <span className="font-medium">Product image</span>
+          <span className="font-medium">Product refs</span>
           <input
             className="h-10 rounded-md border border-zinc-300 px-3 py-2"
             required
+            multiple
             type="file"
             accept="image/*"
-            onChange={(event) => setProductImage(event.target.files?.[0] ?? null)}
+            onChange={(event) =>
+              setProductImages(Array.from(event.target.files ?? []))
+            }
           />
         </label>
       </div>
@@ -340,7 +330,7 @@ function BriefPanel({
         <span className="font-medium">Enable overlay text</span>
       </label>
       {error && <p className="text-sm text-red-600">{error}</p>}
-      <Button className="w-fit" disabled={isSubmitting || !brief || !productImage}>
+      <Button className="w-fit" disabled={isSubmitting || !brief || productImages.length === 0}>
         {isSubmitting ? <Loader2 className="animate-spin" /> : <Upload />}
         Create Project
       </Button>
@@ -348,14 +338,97 @@ function BriefPanel({
   )
 }
 
-function ProductReference({ asset }: { asset?: AdAsset }) {
+function ProductReferencesPanel({
+  projectId,
+  assets,
+  onSaved,
+}: {
+  projectId: string
+  assets: AdAsset[]
+  onSaved: (project: AdProject) => void
+}) {
+  const [newFile, setNewFile] = useState<File | null>(null)
+  const [newName, setNewName] = useState("")
+  const addMutation = useMutation({
+    mutationFn: () => {
+      if (!newFile) throw new Error("Product image required")
+      return addProductReference(projectId, {
+        productImage: newFile,
+        name: newName,
+      })
+    },
+    onSuccess: (updated) => {
+      setNewFile(null)
+      setNewName("")
+      onSaved(updated)
+    },
+  })
+
   return (
     <section className="rounded-lg border border-zinc-200 bg-white p-3 shadow-sm">
-      <div className="mb-2 flex items-center gap-2 text-sm font-semibold">
+      <div className="mb-3 flex items-center gap-2 text-sm font-semibold">
         <ImageIcon className="size-4" />
-        Product/App
+        Product References
       </div>
-      {asset?.imageUrl ? (
+      <div className="grid gap-3">
+        {assets.map((asset) => (
+          <ProductReferenceCard
+            key={`${asset.id}-${asset.name}-${asset.kind}-${asset.isPrimary}`}
+            asset={asset}
+            onSaved={onSaved}
+          />
+        ))}
+      </div>
+      <div className="mt-3 grid gap-2 border-t border-zinc-200 pt-3">
+        <input
+          className="h-9 rounded-md border border-zinc-300 px-2 text-sm"
+          placeholder="New reference name"
+          value={newName}
+          onChange={(event) => setNewName(event.target.value)}
+        />
+        <input
+          className="h-9 rounded-md border border-zinc-300 px-2 py-1 text-sm"
+          type="file"
+          accept="image/*"
+          onChange={(event) => setNewFile(event.target.files?.[0] ?? null)}
+        />
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={!newFile || addMutation.isPending}
+          onClick={() => addMutation.mutate()}
+        >
+          {addMutation.isPending ? <Loader2 className="animate-spin" /> : <Plus />}
+          Add Reference
+        </Button>
+      </div>
+    </section>
+  )
+}
+
+function ProductReferenceCard({
+  asset,
+  onSaved,
+}: {
+  asset: AdAsset
+  onSaved: (project: AdProject) => void
+}) {
+  const [draft, setDraft] = useState({
+    name: asset.name || "",
+    kind: asset.kind || "other",
+    visualDescription: asset.visualDescription || asset.description || "",
+    lockPrompt: asset.lockPrompt || "",
+    useWhen: asset.useWhen || "",
+    isPrimary: asset.isPrimary,
+  })
+  const updateMutation = useMutation({
+    mutationFn: () => updateProductReference(asset.id, draft),
+    onSuccess: onSaved,
+  })
+
+  return (
+    <div className="grid gap-2 rounded-md border border-zinc-200 p-2">
+      {asset.imageUrl ? (
         <img
           src={asset.imageUrl}
           alt={asset.name}
@@ -366,7 +439,66 @@ function ProductReference({ asset }: { asset?: AdAsset }) {
           No image
         </div>
       )}
-    </section>
+      <TextField
+        label="Name"
+        value={draft.name}
+        onChange={(name) => setDraft((prev) => ({ ...prev, name }))}
+      />
+      <label className="grid gap-1 text-xs font-medium text-zinc-600">
+        Kind
+        <select
+          className="h-9 rounded-md border border-zinc-300 px-2 text-sm text-zinc-900"
+          value={draft.kind}
+          onChange={(event) =>
+            setDraft((prev) => ({ ...prev, kind: event.target.value }))
+          }
+        >
+          {PRODUCT_KIND_OPTIONS.map((kind) => (
+            <option key={kind} value={kind}>
+              {kind}
+            </option>
+          ))}
+        </select>
+      </label>
+      <TextareaField
+        label="Visual description"
+        value={draft.visualDescription}
+        onChange={(visualDescription) =>
+          setDraft((prev) => ({ ...prev, visualDescription }))
+        }
+      />
+      <TextareaField
+        label="Lock prompt"
+        value={draft.lockPrompt}
+        onChange={(lockPrompt) =>
+          setDraft((prev) => ({ ...prev, lockPrompt }))
+        }
+      />
+      <TextareaField
+        label="Use when"
+        value={draft.useWhen}
+        onChange={(useWhen) => setDraft((prev) => ({ ...prev, useWhen }))}
+      />
+      <label className="flex items-center gap-2 text-xs font-medium text-zinc-600">
+        <input
+          type="checkbox"
+          checked={draft.isPrimary}
+          onChange={(event) =>
+            setDraft((prev) => ({ ...prev, isPrimary: event.target.checked }))
+          }
+        />
+        Primary
+      </label>
+      <Button
+        size="sm"
+        variant="outline"
+        disabled={updateMutation.isPending}
+        onClick={() => updateMutation.mutate()}
+      >
+        {updateMutation.isPending ? <Loader2 className="animate-spin" /> : <Save />}
+        Save Ref
+      </Button>
+    </div>
   )
 }
 
@@ -447,18 +579,16 @@ function SceneList({
   latestTaskByTarget,
   onSaved,
   onRewriteScene,
-  onGenerateKeyframe,
+  onGenerateLegacyKeyframe,
   onGenerateVideo,
-  onSelectKeyframe,
   onRefresh,
 }: {
   project: AdProject
   latestTaskByTarget: Map<string, AdGenerationTask>
   onSaved: (project: AdProject) => void
   onRewriteScene: (sceneId: string, instruction: string) => void
-  onGenerateKeyframe: (sceneId: string) => void
+  onGenerateLegacyKeyframe: (sceneId: string) => void
   onGenerateVideo: (sceneId: string) => void
-  onSelectKeyframe: (sceneId: string, imageUrl: string) => void
   onRefresh: () => void
 }) {
   if (project.scenes.length === 0) {
@@ -476,12 +606,12 @@ function SceneList({
           key={`${scene.id}-${scene.updatedAt}`}
           scene={scene}
           overlayEnabled={project.overlayEnabled}
-          task={latestTaskByTarget.get(`AdScene:${scene.id}`)}
+          latestTaskByTarget={latestTaskByTarget}
+          sceneTask={latestTaskByTarget.get(`AdScene:${scene.id}`)}
           onSaved={onSaved}
           onRewriteScene={onRewriteScene}
-          onGenerateKeyframe={onGenerateKeyframe}
+          onGenerateLegacyKeyframe={onGenerateLegacyKeyframe}
           onGenerateVideo={onGenerateVideo}
-          onSelectKeyframe={onSelectKeyframe}
           onRefresh={onRefresh}
         />
       ))}
@@ -492,22 +622,22 @@ function SceneList({
 function SceneCard({
   scene,
   overlayEnabled,
-  task,
+  latestTaskByTarget,
+  sceneTask,
   onSaved,
   onRewriteScene,
-  onGenerateKeyframe,
+  onGenerateLegacyKeyframe,
   onGenerateVideo,
-  onSelectKeyframe,
   onRefresh,
 }: {
   scene: AdScene
   overlayEnabled: boolean
-  task?: AdGenerationTask
+  latestTaskByTarget: Map<string, AdGenerationTask>
+  sceneTask?: AdGenerationTask
   onSaved: (project: AdProject) => void
   onRewriteScene: (sceneId: string, instruction: string) => void
-  onGenerateKeyframe: (sceneId: string) => void
+  onGenerateLegacyKeyframe: (sceneId: string) => void
   onGenerateVideo: (sceneId: string) => void
-  onSelectKeyframe: (sceneId: string, imageUrl: string) => void
   onRefresh: () => void
 }) {
   const [rewriteInstruction, setRewriteInstruction] = useState("")
@@ -518,9 +648,9 @@ function SceneCard({
     cameraShot: scene.cameraShot || "",
     cameraMovement: scene.cameraMovement || "",
     composition: scene.composition || "",
-    voiceLine: scene.voiceLine || "",
+    voiceLines: normalizeVoiceLines(scene.voiceLines, scene.voiceLine),
+    ambientAudio: scene.ambientAudio || "",
     onScreenText: scene.onScreenText || "",
-    keyframePrompt: scene.keyframePrompt || "",
   })
   const [videoPromptDraft, setVideoPromptDraft] = useState(
     scene.finalVideoPrompt || ""
@@ -538,7 +668,13 @@ function SceneCard({
     mutationFn: () => regenerateSceneVideoPrompt(scene.id),
     onSuccess: onRefresh,
   })
-  const running = isRunning(task)
+  const running = isRunning(sceneTask)
+  const keyframePromptSlots = scene.keyframePromptSlots ?? []
+  const selectedCount = keyframePromptSlots.filter(
+    (slot) => !!slot.selectedCandidate
+  ).length
+  const canGenerateVideo =
+    keyframePromptSlots.length > 0 && selectedCount === keyframePromptSlots.length
 
   return (
     <article className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm">
@@ -556,7 +692,10 @@ function SceneCard({
           />
         </div>
         <div className="flex items-center gap-2">
-          {task && <TaskBadge task={task} />}
+          <span className="rounded-md bg-zinc-100 px-2 py-1 text-xs text-zinc-600">
+            {scene.durationSec}s
+          </span>
+          {sceneTask && <TaskBadge task={sceneTask} />}
           <Button
             size="sm"
             variant="outline"
@@ -568,12 +707,12 @@ function SceneCard({
             ) : (
               <Save />
             )}
-            Save
+            Save Scene
           </Button>
         </div>
       </div>
 
-      <div className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,1fr)_260px]">
+      <div className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
         <div className="grid gap-3">
           <label className="grid gap-1 text-xs font-medium text-zinc-600">
             Action
@@ -608,28 +747,6 @@ function SceneCard({
                 setDraft((prev) => ({ ...prev, cameraShot }))
               }
             />
-            {!!scene.cameraAlternatives?.length && (
-              <label className="grid gap-1 text-xs font-medium text-zinc-600">
-                Suggested camera
-                <select
-                  className="h-9 rounded-md border border-zinc-300 px-2 text-sm text-zinc-900"
-                  value={draft.cameraShot}
-                  onChange={(event) =>
-                    setDraft((prev) => ({
-                      ...prev,
-                      cameraShot: event.target.value,
-                    }))
-                  }
-                >
-                  <option value={draft.cameraShot}>{draft.cameraShot}</option>
-                  {scene.cameraAlternatives.map((camera) => (
-                    <option key={camera} value={camera}>
-                      {camera}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            )}
             <TextField
               label="Camera movement"
               value={draft.cameraMovement}
@@ -638,16 +755,39 @@ function SceneCard({
               }
             />
           </div>
-          <label className="grid gap-1 text-xs font-medium text-zinc-600">
-            Voice
-            <textarea
-              className="min-h-16 rounded-md border border-zinc-300 p-2 text-sm leading-5 text-zinc-900"
-              value={draft.voiceLine}
-              onChange={(event) =>
-                setDraft((prev) => ({ ...prev, voiceLine: event.target.value }))
-              }
-            />
-          </label>
+          {!!scene.cameraAlternatives?.length && (
+            <label className="grid gap-1 text-xs font-medium text-zinc-600">
+              Suggested camera
+              <select
+                className="h-9 rounded-md border border-zinc-300 px-2 text-sm text-zinc-900"
+                value={draft.cameraShot}
+                onChange={(event) =>
+                  setDraft((prev) => ({
+                    ...prev,
+                    cameraShot: event.target.value,
+                  }))
+                }
+              >
+                <option value={draft.cameraShot}>{draft.cameraShot}</option>
+                {scene.cameraAlternatives.map((camera) => (
+                  <option key={camera} value={camera}>
+                    {camera}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+          <VoiceLinesEditor
+            voiceLines={draft.voiceLines}
+            onChange={(voiceLines) => setDraft((prev) => ({ ...prev, voiceLines }))}
+          />
+          <TextareaField
+            label="Ambient audio"
+            value={draft.ambientAudio}
+            onChange={(ambientAudio) =>
+              setDraft((prev) => ({ ...prev, ambientAudio }))
+            }
+          />
           <div className="grid gap-2 rounded-md border border-zinc-200 p-2">
             <input
               className="h-9 rounded-md border border-zinc-300 px-2 text-sm text-zinc-900"
@@ -671,28 +811,6 @@ function SceneCard({
           <div className="grid gap-2 rounded-md border border-zinc-200 p-2">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <span className="text-xs font-semibold text-zinc-600">
-                Keyframe prompt
-              </span>
-              {scene.keyframePromptStale && (
-                <span className="rounded-md bg-amber-50 px-2 py-1 text-xs font-medium text-amber-700">
-                  Needs keyframe
-                </span>
-              )}
-            </div>
-            <textarea
-              className="min-h-28 rounded-md border border-zinc-300 p-2 text-xs leading-5 text-zinc-900"
-              value={draft.keyframePrompt}
-              onChange={(event) =>
-                setDraft((prev) => ({
-                  ...prev,
-                  keyframePrompt: event.target.value,
-                }))
-              }
-            />
-          </div>
-          <div className="grid gap-2 rounded-md border border-zinc-200 p-2">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <span className="text-xs font-semibold text-zinc-600">
                 Final video prompt
               </span>
               {scene.finalVideoPromptStale && (
@@ -702,7 +820,7 @@ function SceneCard({
               )}
             </div>
             <textarea
-              className="min-h-36 rounded-md border border-zinc-300 p-2 text-xs leading-5 text-zinc-900"
+              className="min-h-40 rounded-md border border-zinc-300 p-2 text-xs leading-5 text-zinc-900"
               value={videoPromptDraft}
               onChange={(event) => setVideoPromptDraft(event.target.value)}
             />
@@ -738,63 +856,24 @@ function SceneCard({
         </div>
 
         <div className="grid gap-3">
-          <div className="overflow-hidden rounded-md border border-zinc-200 bg-zinc-100">
-            {scene.keyframeImageUrl ? (
-              <img
-                src={scene.keyframeImageUrl}
-                alt={scene.title}
-                className="aspect-[9/16] w-full object-cover"
-              />
-            ) : (
-              <div className="flex aspect-[9/16] items-center justify-center text-sm text-zinc-500">
-                Keyframe
-              </div>
-            )}
-          </div>
-          {!!scene.keyframeCandidates?.length && (
-            <div className="grid grid-cols-4 gap-2">
-              {scene.keyframeCandidates.map((candidate) => (
-                <button
-                  key={candidate}
-                  className="overflow-hidden rounded border border-zinc-200"
-                  onClick={() => onSelectKeyframe(scene.id, candidate)}
-                >
-                  <img
-                    src={candidate}
-                    alt=""
-                    className="aspect-square w-full object-cover"
-                  />
-                </button>
-              ))}
-            </div>
-          )}
-          <div className="grid gap-2">
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={running}
-              onClick={() => onGenerateKeyframe(scene.id)}
-            >
-              {running ? <Loader2 className="animate-spin" /> : <Camera />}
-              Generate Keyframe
-            </Button>
-            <Button
-              size="sm"
-              disabled={running || !scene.keyframeImageUrl}
-              onClick={() => onGenerateVideo(scene.id)}
-            >
-              <Video />
-              Generate Video
-            </Button>
-          </div>
+          <KeyframeSlots
+            scene={{ ...scene, keyframePromptSlots }}
+            latestTaskByTarget={latestTaskByTarget}
+            onSaved={onSaved}
+            onRefresh={onRefresh}
+            onGenerateLegacyKeyframe={onGenerateLegacyKeyframe}
+          />
+          <Button
+            size="sm"
+            disabled={running || !canGenerateVideo}
+            onClick={() => onGenerateVideo(scene.id)}
+          >
+            <Video />
+            Generate Video
+          </Button>
           {scene.videoError && (
             <p className="rounded-md bg-red-50 p-2 text-xs leading-4 text-red-700">
               {scene.videoError}
-            </p>
-          )}
-          {scene.keyframeWarning && (
-            <p className="rounded-md bg-amber-50 p-2 text-xs leading-4 text-amber-700">
-              {scene.keyframeWarning}
             </p>
           )}
           {scene.videoUrl && (
@@ -807,6 +886,261 @@ function SceneCard({
         </div>
       </div>
     </article>
+  )
+}
+
+function VoiceLinesEditor({
+  voiceLines,
+  onChange,
+}: {
+  voiceLines: AdVoiceLine[]
+  onChange: (voiceLines: AdVoiceLine[]) => void
+}) {
+  const updateLine = (index: number, patch: Partial<AdVoiceLine>) => {
+    onChange(
+      voiceLines.map((line, lineIndex) =>
+        lineIndex === index ? { ...line, ...patch } : line
+      )
+    )
+  }
+  return (
+    <div className="grid gap-2 rounded-md border border-zinc-200 p-2">
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-xs font-semibold text-zinc-600">Voice lines</span>
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() =>
+            onChange([
+              ...voiceLines,
+              {
+                speaker: "Primary actor",
+                timing: "",
+                actionState: "",
+                emotion: "",
+                delivery: "",
+                line: "",
+              },
+            ])
+          }
+        >
+          <Plus />
+          Add Line
+        </Button>
+      </div>
+      {voiceLines.map((voiceLine, index) => (
+        <div key={index} className="grid gap-2 rounded-md bg-zinc-50 p-2">
+          <div className="grid gap-2 md:grid-cols-3">
+            <TextField
+              label="Speaker"
+              value={voiceLine.speaker}
+              onChange={(speaker) => updateLine(index, { speaker })}
+            />
+            <TextField
+              label="Timing"
+              value={voiceLine.timing || ""}
+              onChange={(timing) => updateLine(index, { timing })}
+            />
+            <TextField
+              label="Emotion"
+              value={voiceLine.emotion || ""}
+              onChange={(emotion) => updateLine(index, { emotion })}
+            />
+          </div>
+          <TextField
+            label="Action state"
+            value={voiceLine.actionState || ""}
+            onChange={(actionState) => updateLine(index, { actionState })}
+          />
+          <TextField
+            label="Delivery"
+            value={voiceLine.delivery || ""}
+            onChange={(delivery) => updateLine(index, { delivery })}
+          />
+          <TextareaField
+            label="Exact line"
+            value={voiceLine.line}
+            onChange={(line) => updateLine(index, { line })}
+          />
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function KeyframeSlots({
+  scene,
+  latestTaskByTarget,
+  onSaved,
+  onRefresh,
+  onGenerateLegacyKeyframe,
+}: {
+  scene: AdScene
+  latestTaskByTarget: Map<string, AdGenerationTask>
+  onSaved: (project: AdProject) => void
+  onRefresh: () => void
+  onGenerateLegacyKeyframe: (sceneId: string) => void
+}) {
+  const keyframePromptSlots = scene.keyframePromptSlots ?? []
+  if (!keyframePromptSlots.length) {
+    return (
+      <div className="grid gap-2 rounded-md border border-zinc-200 p-3">
+        <p className="text-sm text-zinc-500">No keyframe slots yet</p>
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() => onGenerateLegacyKeyframe(scene.id)}
+        >
+          <Camera />
+          Generate Legacy Keyframe
+        </Button>
+      </div>
+    )
+  }
+
+  return (
+    <div className="grid gap-3">
+      {keyframePromptSlots.map((slot) => (
+        <KeyframeSlotCard
+          key={`${slot.id}-${slot.selectedCandidateId}-${slot.stale}`}
+          slot={slot}
+          task={latestTaskByTarget.get(`AdKeyframePromptSlot:${slot.id}`)}
+          onSaved={onSaved}
+          onRefresh={onRefresh}
+        />
+      ))}
+    </div>
+  )
+}
+
+function KeyframeSlotCard({
+  slot,
+  task,
+  onSaved,
+  onRefresh,
+}: {
+  slot: AdKeyframePromptSlot
+  task?: AdGenerationTask
+  onSaved: (project: AdProject) => void
+  onRefresh: () => void
+}) {
+  const [draft, setDraft] = useState({
+    label: slot.label,
+    timing: slot.timing || "",
+    purpose: slot.purpose,
+    prompt: slot.prompt,
+    productReferenceIds: slot.productReferenceIds || [],
+  })
+  const updateMutation = useMutation({
+    mutationFn: () => updateKeyframePromptSlot(slot.id, draft),
+    onSuccess: onSaved,
+  })
+  const generateMutation = useMutation({
+    mutationFn: () => generateKeyframeSlot(slot.id),
+    onSuccess: onRefresh,
+  })
+  const selectMutation = useMutation({
+    mutationFn: (candidateId: string) =>
+      selectKeyframeSlotCandidate(slot.id, candidateId),
+    onSuccess: onSaved,
+  })
+  const running = isRunning(task) || generateMutation.isPending
+
+  return (
+    <div className="grid gap-2 rounded-md border border-zinc-200 p-2">
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-xs font-semibold text-zinc-600">
+          Ref {slot.slotIndex + 1}
+        </span>
+        <div className="flex items-center gap-2">
+          {slot.stale && (
+            <span className="rounded-md bg-amber-50 px-2 py-1 text-xs font-medium text-amber-700">
+              Needs keyframe
+            </span>
+          )}
+          {task && <TaskBadge task={task} />}
+        </div>
+      </div>
+      <TextField
+        label="Label"
+        value={draft.label}
+        onChange={(label) => setDraft((prev) => ({ ...prev, label }))}
+      />
+      <TextField
+        label="Timing"
+        value={draft.timing}
+        onChange={(timing) => setDraft((prev) => ({ ...prev, timing }))}
+      />
+      <TextareaField
+        label="Purpose"
+        value={draft.purpose}
+        onChange={(purpose) => setDraft((prev) => ({ ...prev, purpose }))}
+      />
+      <TextareaField
+        label="Prompt"
+        value={draft.prompt}
+        onChange={(prompt) => setDraft((prev) => ({ ...prev, prompt }))}
+      />
+      <div className="overflow-hidden rounded-md border border-zinc-200 bg-zinc-100">
+        {slot.selectedCandidate?.imageUrl ? (
+          <img
+            src={slot.selectedCandidate.imageUrl}
+            alt={slot.label}
+            className="aspect-[9/16] w-full object-cover"
+          />
+        ) : (
+          <div className="flex aspect-[9/16] items-center justify-center text-sm text-zinc-500">
+            Selected keyframe
+          </div>
+        )}
+      </div>
+      {!!slot.candidates?.length && (
+        <div className="grid grid-cols-4 gap-2">
+          {slot.candidates.map((candidate) => (
+            <button
+              key={candidate.id}
+              className={`overflow-hidden rounded border ${
+                slot.selectedCandidateId === candidate.id
+                  ? "border-zinc-900"
+                  : "border-zinc-200"
+              }`}
+              onClick={() => selectMutation.mutate(candidate.id)}
+            >
+              <img
+                src={candidate.imageUrl}
+                alt=""
+                className="aspect-square w-full object-cover"
+              />
+            </button>
+          ))}
+        </div>
+      )}
+      <div className="grid grid-cols-2 gap-2">
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={updateMutation.isPending}
+          onClick={() => updateMutation.mutate()}
+        >
+          {updateMutation.isPending ? <Loader2 className="animate-spin" /> : <Save />}
+          Save Slot
+        </Button>
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={running}
+          onClick={() => generateMutation.mutate()}
+        >
+          {running ? <Loader2 className="animate-spin" /> : <Camera />}
+          Generate
+        </Button>
+      </div>
+      {slot.selectedCandidate?.warning && (
+        <p className="rounded-md bg-amber-50 p-2 text-xs leading-4 text-amber-700">
+          {slot.selectedCandidate.warning}
+        </p>
+      )}
+    </div>
   )
 }
 
@@ -834,6 +1168,30 @@ function TextField({
   )
 }
 
+function TextareaField({
+  label,
+  value,
+  onChange,
+  disabled = false,
+}: {
+  label: string
+  value: string
+  onChange: (value: string) => void
+  disabled?: boolean
+}) {
+  return (
+    <label className="grid gap-1 text-xs font-medium text-zinc-600">
+      {label}
+      <textarea
+        className="min-h-20 rounded-md border border-zinc-300 p-2 text-sm leading-5 text-zinc-900"
+        disabled={disabled}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+      />
+    </label>
+  )
+}
+
 function TaskBadge({ task }: { task: AdGenerationTask }) {
   const colors =
     task.status === "FAILED"
@@ -847,6 +1205,35 @@ function TaskBadge({ task }: { task: AdGenerationTask }) {
       {isRunning(task) ? ` ${task.progress}%` : ""}
     </span>
   )
+}
+
+function normalizeVoiceLines(
+  voiceLines?: AdVoiceLine[] | null,
+  fallback?: string | null
+): AdVoiceLine[] {
+  if (voiceLines?.length) return voiceLines
+  if (fallback) {
+    return [
+      {
+        speaker: "Primary actor",
+        timing: "",
+        actionState: "",
+        emotion: "",
+        delivery: "",
+        line: fallback,
+      },
+    ]
+  }
+  return [
+    {
+      speaker: "Primary actor",
+      timing: "",
+      actionState: "",
+      emotion: "",
+      delivery: "",
+      line: "",
+    },
+  ]
 }
 
 function isRunning(task?: AdGenerationTask) {
