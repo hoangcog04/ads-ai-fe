@@ -34,6 +34,15 @@ export type AdVoiceLine = {
   line: string
 }
 
+export type AdActingBeat = {
+  timing?: string | null
+  emotion?: string | null
+  facialExpression?: string | null
+  bodyLanguage?: string | null
+  microAction?: string | null
+  gaze?: string | null
+}
+
 export type AdKeyframeCandidate = {
   id: string
   slotId: string
@@ -76,6 +85,7 @@ export type AdScene = {
   cameraAlternatives?: string[] | null
   voiceLine?: string | null
   voiceLines?: AdVoiceLine[] | null
+  actingBeats?: AdActingBeat[] | null
   ambientAudio?: string | null
   onScreenText?: string | null
   keyframePrompt?: string | null
@@ -112,8 +122,13 @@ export type AdProject = {
   title?: string | null
   brief: string
   productContext?: string | null
+  scriptTimeline?: string | null
+  characterBrief?: string | null
+  locationBrief?: string | null
   aspectRatio: string
   targetDurationSec: number
+  durationRangeMinSec?: number | null
+  durationRangeMaxSec?: number | null
   voiceLanguage: string
   overlayEnabled: boolean
   status: string
@@ -128,8 +143,13 @@ export type CreateAdProjectPayload = {
   brief: string
   title?: string
   productContext?: string
+  scriptTimeline?: string
+  characterBrief?: string
+  locationBrief?: string
   aspectRatio: string
   targetDurationSec?: number
+  durationRangeMinSec?: string
+  durationRangeMaxSec?: string
   voiceLanguage: string
   overlayEnabled: boolean
   productImage?: File

@@ -1,7 +1,9 @@
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import {
   Camera,
+  CheckCircle2,
+  FileJson,
   Film,
   ImageIcon,
   Loader2,
@@ -21,6 +23,7 @@ import {
   generateKeyframeSlot,
   generateVideo,
   getAdProject,
+  importAdPlanJson,
   regenerateSceneVideoPrompt,
   rewriteScene,
   runAdPlan,
@@ -31,6 +34,7 @@ import {
   updateSceneVideoPrompt,
 } from "@/services/ads"
 import type {
+  AdActingBeat,
   AdAsset,
   AdGenerationTask,
   AdKeyframePromptSlot,
@@ -49,11 +53,27 @@ const PRODUCT_KIND_OPTIONS = [
   "before_after",
   "other",
 ]
+const VOICE_LANGUAGE_OPTIONS = [
+  { value: "auto", label: "Auto" },
+  { value: "vi", label: "Vietnamese" },
+  { value: "en", label: "English" },
+  { value: "es", label: "Spanish" },
+]
+const WORKSPACE_STAGES = [
+  { id: "plan", label: "Plan" },
+  { id: "references", label: "References" },
+  { id: "keyframes", label: "Keyframes" },
+  { id: "videos", label: "Videos" },
+] as const
+
+type WorkspaceStage = (typeof WORKSPACE_STAGES)[number]["id"]
 
 function ProductPage() {
   const [projectId, setProjectId] = useState(() =>
     localStorage.getItem(PROJECT_STORAGE_KEY)
   )
+  const [workspaceStage, setWorkspaceStage] =
+    useState<WorkspaceStage>("plan")
   const queryClient = useQueryClient()
 
   const projectQuery = useQuery({
@@ -84,6 +104,7 @@ function ProductPage() {
     onSuccess: (created) => {
       localStorage.setItem(PROJECT_STORAGE_KEY, created.id)
       setProjectId(created.id)
+      setWorkspaceStage("plan")
       queryClient.setQueryData(["ads-project", created.id], created)
     },
   })
@@ -91,6 +112,15 @@ function ProductPage() {
   const planMutation = useMutation({
     mutationFn: runAdPlan,
     onSuccess: refreshProject,
+  })
+
+  const importPlanMutation = useMutation({
+    mutationFn: ({ id, rawPlan }: { id: string; rawPlan: string }) =>
+      importAdPlanJson(id, rawPlan),
+    onSuccess: (updated) => {
+      queryClient.setQueryData(["ads-project", updated.id], updated)
+      setWorkspaceStage("references")
+    },
   })
 
   const assetMutation = useMutation({
@@ -122,7 +152,25 @@ function ProductPage() {
   const resetProject = () => {
     localStorage.removeItem(PROJECT_STORAGE_KEY)
     setProjectId(null)
+    setWorkspaceStage("plan")
   }
+
+  useEffect(() => {
+    if (!project) return
+    if (workspaceStage === "plan" && project.scenes.length > 0) {
+      setWorkspaceStage("references")
+      return
+    }
+    const nextCharacter = project.assets.find((asset) => asset.type === "CHARACTER")
+    const nextLocation = project.assets.find((asset) => asset.type === "LOCATION")
+    if (
+      workspaceStage === "references" &&
+      nextCharacter?.imageUrl &&
+      nextLocation?.imageUrl
+    ) {
+      setWorkspaceStage("keyframes")
+    }
+  }, [project, workspaceStage])
 
   if (!projectId || !project) {
     return (
@@ -142,6 +190,16 @@ function ProductPage() {
   const character = project.assets.find((asset) => asset.type === "CHARACTER")
   const location = project.assets.find((asset) => asset.type === "LOCATION")
   const isPlanRunning = isRunning(latestTaskByTarget.get(`AdProject:${project.id}`))
+  const hasPlan = project.scenes.length > 0
+  const hasDownstream = hasPlan || !!character || !!location
+  const hasReadyReferences = !!character?.imageUrl && !!location?.imageUrl
+
+  const confirmRebuildPlan = () => {
+    if (!hasDownstream) return true
+    return window.confirm(
+      "This will rebuild the plan, character/location specs, scenes, and keyframe slots. Existing downstream keyframes/videos can become invalid. Continue?"
+    )
+  }
 
   return (
     <main className="min-h-screen bg-zinc-50 text-zinc-950">
@@ -159,7 +217,12 @@ function ProductPage() {
           <div className="flex items-center gap-2">
             <Button
               disabled={isPlanRunning || planMutation.isPending}
-              onClick={() => planMutation.mutate(project.id)}
+              onClick={() => {
+                if (confirmRebuildPlan()) {
+                  planMutation.mutate(project.id)
+                  setWorkspaceStage("plan")
+                }
+              }}
             >
               {isPlanRunning ? <Loader2 className="animate-spin" /> : <Sparkles />}
               Generate Plan
@@ -169,6 +232,13 @@ function ProductPage() {
             </Button>
           </div>
         </header>
+
+        <StageTabs
+          stage={workspaceStage}
+          project={project}
+          hasReadyReferences={hasReadyReferences}
+          onChange={setWorkspaceStage}
+        />
 
         <section className="grid gap-4 lg:grid-cols-[340px_minmax(0,1fr)]">
           <aside className="flex flex-col gap-4">
@@ -197,25 +267,219 @@ function ProductPage() {
 
           <div className="flex flex-col gap-4">
             <ProjectBrief project={project} />
-            <SceneList
-              project={project}
-              latestTaskByTarget={latestTaskByTarget}
-              onSaved={(updated) => {
-                queryClient.setQueryData(["ads-project", updated.id], updated)
-              }}
-              onRewriteScene={(sceneId, instruction) =>
-                rewriteMutation.mutate({ sceneId, instruction })
-              }
-              onGenerateLegacyKeyframe={(sceneId) =>
-                legacyKeyframeMutation.mutate(sceneId)
-              }
-              onGenerateVideo={(sceneId) => videoMutation.mutate(sceneId)}
-              onRefresh={refreshProject}
-            />
+            {workspaceStage === "plan" && (
+              <ImportPlanPanel
+                project={project}
+                isSubmitting={importPlanMutation.isPending}
+                error={readMutationError(importPlanMutation.error)}
+                onImport={(rawPlan) => {
+                  if (confirmRebuildPlan()) {
+                    importPlanMutation.mutate({ id: project.id, rawPlan })
+                  }
+                }}
+              />
+            )}
+            {workspaceStage === "references" && (
+              <ReferenceStageSummary
+                character={character}
+                location={location}
+                latestTaskByTarget={latestTaskByTarget}
+              />
+            )}
+            {(workspaceStage === "keyframes" || workspaceStage === "videos") && (
+              <SceneList
+                project={project}
+                latestTaskByTarget={latestTaskByTarget}
+                onSaved={(updated) => {
+                  queryClient.setQueryData(["ads-project", updated.id], updated)
+                }}
+                onRewriteScene={(sceneId, instruction) =>
+                  rewriteMutation.mutate({ sceneId, instruction })
+                }
+                onGenerateLegacyKeyframe={(sceneId) =>
+                  legacyKeyframeMutation.mutate(sceneId)
+                }
+                onGenerateVideo={(sceneId) => videoMutation.mutate(sceneId)}
+                onRefresh={refreshProject}
+              />
+            )}
           </div>
         </section>
       </div>
     </main>
+  )
+}
+
+function StageTabs({
+  stage,
+  project,
+  hasReadyReferences,
+  onChange,
+}: {
+  stage: WorkspaceStage
+  project: AdProject
+  hasReadyReferences: boolean
+  onChange: (stage: WorkspaceStage) => void
+}) {
+  const sceneCount = project.scenes.length
+  const selectedKeyframes = project.scenes.reduce(
+    (count, scene) =>
+      count +
+      (scene.keyframePromptSlots ?? []).filter((slot) => slot.selectedCandidate)
+        .length,
+    0
+  )
+  const stageHint: Record<WorkspaceStage, string> = {
+    plan: sceneCount ? `${sceneCount} scenes` : "create or import plan",
+    references: hasReadyReferences ? "refs ready" : "generate char/location",
+    keyframes: selectedKeyframes ? `${selectedKeyframes} selected` : "select refs",
+    videos: "provider stub",
+  }
+
+  return (
+    <nav className="grid gap-2 rounded-lg border border-zinc-200 bg-white p-2 shadow-sm sm:grid-cols-4">
+      {WORKSPACE_STAGES.map((item) => {
+        const active = item.id === stage
+        return (
+          <button
+            key={item.id}
+            className={`flex items-center justify-between rounded-md border px-3 py-2 text-left ${
+              active
+                ? "border-zinc-900 bg-zinc-950 text-white"
+                : "border-zinc-200 bg-white text-zinc-700"
+            }`}
+            onClick={() => onChange(item.id)}
+          >
+            <span className="text-sm font-semibold">{item.label}</span>
+            <span
+              className={`text-xs ${
+                active ? "text-zinc-200" : "text-zinc-500"
+              }`}
+            >
+              {stageHint[item.id]}
+            </span>
+          </button>
+        )
+      })}
+    </nav>
+  )
+}
+
+function ImportPlanPanel({
+  project,
+  isSubmitting,
+  error,
+  onImport,
+}: {
+  project: AdProject
+  isSubmitting: boolean
+  error?: string | null
+  onImport: (rawPlan: string) => void
+}) {
+  const [rawPlan, setRawPlan] = useState("")
+  const hasExistingPlan = project.scenes.length > 0
+
+  return (
+    <section className="grid gap-3 rounded-lg border border-zinc-200 bg-white p-3 shadow-sm">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-2 text-sm font-semibold">
+          <FileJson className="size-4" />
+          Import Plan JSON
+        </div>
+        {hasExistingPlan && (
+          <span className="rounded-md bg-amber-50 px-2 py-1 text-xs font-medium text-amber-700">
+            Rebuilds downstream plan data
+          </span>
+        )}
+      </div>
+      <textarea
+        className="min-h-72 rounded-md border border-zinc-300 p-3 font-mono text-xs leading-5 text-zinc-900"
+        placeholder="Paste the JSON returned by ads_plan.en.txt here"
+        value={rawPlan}
+        onChange={(event) => setRawPlan(event.target.value)}
+      />
+      {error && <p className="text-sm text-red-600">{error}</p>}
+      <div className="flex flex-wrap items-center gap-2">
+        <Button
+          className="w-fit"
+          disabled={isSubmitting || !rawPlan.trim()}
+          onClick={() => onImport(rawPlan)}
+        >
+          {isSubmitting ? <Loader2 className="animate-spin" /> : <FileJson />}
+          Import Plan
+        </Button>
+        <p className="text-xs text-zinc-500">
+          Uses the same parser and DB persist path as Generate Plan.
+        </p>
+      </div>
+    </section>
+  )
+}
+
+function ReferenceStageSummary({
+  character,
+  location,
+  latestTaskByTarget,
+}: {
+  character?: AdAsset
+  location?: AdAsset
+  latestTaskByTarget: Map<string, AdGenerationTask>
+}) {
+  return (
+    <section className="grid gap-3 rounded-lg border border-zinc-200 bg-white p-3 shadow-sm">
+      <div className="flex items-center gap-2 text-sm font-semibold">
+        <CheckCircle2 className="size-4" />
+        Reference Readiness
+      </div>
+      <div className="grid gap-2 md:grid-cols-2">
+        <ReferenceReadinessRow
+          label="Character"
+          asset={character}
+          task={character ? latestTaskByTarget.get(`AdAsset:${character.id}`) : undefined}
+        />
+        <ReferenceReadinessRow
+          label="Location"
+          asset={location}
+          task={location ? latestTaskByTarget.get(`AdAsset:${location.id}`) : undefined}
+        />
+      </div>
+      <p className="text-xs leading-5 text-zinc-500">
+        Generate both references from the left rail. When both are ready, the
+        workspace advances to keyframe slots automatically.
+      </p>
+    </section>
+  )
+}
+
+function ReferenceReadinessRow({
+  label,
+  asset,
+  task,
+}: {
+  label: string
+  asset?: AdAsset
+  task?: AdGenerationTask
+}) {
+  const ready = !!asset?.imageUrl
+  return (
+    <div className="flex items-center justify-between gap-2 rounded-md border border-zinc-200 p-2">
+      <div>
+        <div className="text-sm font-medium">{label}</div>
+        <div className="text-xs text-zinc-500">
+          {asset ? asset.name : "Waiting for imported/generated plan"}
+        </div>
+      </div>
+      <div className="flex items-center gap-2">
+        {task && <TaskBadge task={task} />}
+        <span
+          className={`rounded-md px-2 py-1 text-xs font-medium ${
+            ready ? "bg-emerald-50 text-emerald-700" : "bg-zinc-100 text-zinc-600"
+          }`}
+        >
+          {ready ? "Ready" : "Pending"}
+        </span>
+      </div>
+    </div>
   )
 }
 
@@ -230,7 +494,12 @@ function BriefPanel({
     brief: string
     title?: string
     productContext?: string
+    scriptTimeline?: string
+    characterBrief?: string
+    locationBrief?: string
     aspectRatio: string
+    durationRangeMinSec?: string
+    durationRangeMaxSec?: string
     voiceLanguage: string
     overlayEnabled: boolean
     productImages: File[]
@@ -239,8 +508,13 @@ function BriefPanel({
   const [brief, setBrief] = useState("")
   const [title, setTitle] = useState("")
   const [productContext, setProductContext] = useState("")
+  const [scriptTimeline, setScriptTimeline] = useState("")
+  const [characterBrief, setCharacterBrief] = useState("")
+  const [locationBrief, setLocationBrief] = useState("")
   const [aspectRatio, setAspectRatio] = useState("9:16")
-  const [voiceLanguage, setVoiceLanguage] = useState("vi")
+  const [durationRangeMinSec, setDurationRangeMinSec] = useState("")
+  const [durationRangeMaxSec, setDurationRangeMaxSec] = useState("")
+  const [voiceLanguage, setVoiceLanguage] = useState("auto")
   const [overlayEnabled, setOverlayEnabled] = useState(false)
   const [productImages, setProductImages] = useState<File[]>([])
 
@@ -254,7 +528,12 @@ function BriefPanel({
           brief,
           title,
           productContext,
+          scriptTimeline,
+          characterBrief,
+          locationBrief,
           aspectRatio,
+          durationRangeMinSec,
+          durationRangeMaxSec,
           voiceLanguage,
           overlayEnabled,
           productImages,
@@ -283,6 +562,32 @@ function BriefPanel({
           onChange={(event) => setProductContext(event.target.value)}
         />
       </label>
+      <label className="grid gap-1 text-sm">
+        <span className="font-medium">Script / Timeline</span>
+        <textarea
+          className="min-h-32 rounded-md border border-zinc-300 p-3 leading-5"
+          value={scriptTimeline}
+          onChange={(event) => setScriptTimeline(event.target.value)}
+        />
+      </label>
+      <div className="grid gap-3 md:grid-cols-2">
+        <label className="grid gap-1 text-sm">
+          <span className="font-medium">Character brief</span>
+          <textarea
+            className="min-h-20 rounded-md border border-zinc-300 p-3 leading-5"
+            value={characterBrief}
+            onChange={(event) => setCharacterBrief(event.target.value)}
+          />
+        </label>
+        <label className="grid gap-1 text-sm">
+          <span className="font-medium">Location brief</span>
+          <textarea
+            className="min-h-20 rounded-md border border-zinc-300 p-3 leading-5"
+            value={locationBrief}
+            onChange={(event) => setLocationBrief(event.target.value)}
+          />
+        </label>
+      </div>
       <div className="grid gap-3 sm:grid-cols-3">
         <label className="grid gap-1 text-sm">
           <span className="font-medium">Ratio</span>
@@ -303,8 +608,11 @@ function BriefPanel({
             value={voiceLanguage}
             onChange={(event) => setVoiceLanguage(event.target.value)}
           >
-            <option value="vi">Tieng Viet</option>
-            <option value="en">English</option>
+            {VOICE_LANGUAGE_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
           </select>
         </label>
         <label className="grid gap-1 text-sm">
@@ -320,6 +628,20 @@ function BriefPanel({
             }
           />
         </label>
+      </div>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <TextField
+          label="Duration range min sec"
+          value={durationRangeMinSec}
+          onChange={setDurationRangeMinSec}
+          type="number"
+        />
+        <TextField
+          label="Duration range max sec"
+          value={durationRangeMaxSec}
+          onChange={setDurationRangeMaxSec}
+          type="number"
+        />
       </div>
       <label className="flex w-fit items-center gap-2 text-sm">
         <input
@@ -569,6 +891,32 @@ function ProjectBrief({ project }: { project: AdProject }) {
             {project.productContext || "None"}
           </p>
         </div>
+        <div>
+          <h2 className="text-sm font-semibold">Script / Timeline</h2>
+          <p className="mt-1 whitespace-pre-wrap text-sm leading-5 text-zinc-700">
+            {project.scriptTimeline || "None"}
+          </p>
+        </div>
+        <div>
+          <h2 className="text-sm font-semibold">Duration range</h2>
+          <p className="mt-1 text-sm leading-5 text-zinc-700">
+            {project.durationRangeMinSec || project.durationRangeMaxSec
+              ? `${project.durationRangeMinSec || "?"}-${project.durationRangeMaxSec || "?"}s`
+              : "None"}
+          </p>
+        </div>
+        <div>
+          <h2 className="text-sm font-semibold">Character brief</h2>
+          <p className="mt-1 whitespace-pre-wrap text-sm leading-5 text-zinc-700">
+            {project.characterBrief || "None"}
+          </p>
+        </div>
+        <div>
+          <h2 className="text-sm font-semibold">Location brief</h2>
+          <p className="mt-1 whitespace-pre-wrap text-sm leading-5 text-zinc-700">
+            {project.locationBrief || "None"}
+          </p>
+        </div>
       </div>
     </section>
   )
@@ -649,6 +997,7 @@ function SceneCard({
     cameraMovement: scene.cameraMovement || "",
     composition: scene.composition || "",
     voiceLines: normalizeVoiceLines(scene.voiceLines, scene.voiceLine),
+    actingBeats: normalizeActingBeats(scene.actingBeats),
     ambientAudio: scene.ambientAudio || "",
     onScreenText: scene.onScreenText || "",
   })
@@ -780,6 +1129,12 @@ function SceneCard({
           <VoiceLinesEditor
             voiceLines={draft.voiceLines}
             onChange={(voiceLines) => setDraft((prev) => ({ ...prev, voiceLines }))}
+          />
+          <ActingBeatsEditor
+            actingBeats={draft.actingBeats}
+            onChange={(actingBeats) =>
+              setDraft((prev) => ({ ...prev, actingBeats }))
+            }
           />
           <TextareaField
             label="Ambient audio"
@@ -968,6 +1323,88 @@ function VoiceLinesEditor({
   )
 }
 
+function ActingBeatsEditor({
+  actingBeats,
+  onChange,
+}: {
+  actingBeats: AdActingBeat[]
+  onChange: (actingBeats: AdActingBeat[]) => void
+}) {
+  const updateBeat = (index: number, patch: Partial<AdActingBeat>) => {
+    onChange(
+      actingBeats.map((beat, beatIndex) =>
+        beatIndex === index ? { ...beat, ...patch } : beat
+      )
+    )
+  }
+
+  return (
+    <div className="grid gap-2 rounded-md border border-zinc-200 p-2">
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-xs font-semibold text-zinc-600">Acting beats</span>
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() =>
+            onChange([
+              ...actingBeats,
+              {
+                timing: "",
+                emotion: "",
+                facialExpression: "",
+                bodyLanguage: "",
+                microAction: "",
+                gaze: "",
+              },
+            ])
+          }
+        >
+          <Plus />
+          Add Beat
+        </Button>
+      </div>
+      {actingBeats.map((beat, index) => (
+        <div key={index} className="grid gap-2 rounded-md bg-zinc-50 p-2">
+          <div className="grid gap-2 md:grid-cols-2">
+            <TextField
+              label="Timing"
+              value={beat.timing || ""}
+              onChange={(timing) => updateBeat(index, { timing })}
+            />
+            <TextField
+              label="Emotion"
+              value={beat.emotion || ""}
+              onChange={(emotion) => updateBeat(index, { emotion })}
+            />
+          </div>
+          <TextareaField
+            label="Facial expression"
+            value={beat.facialExpression || ""}
+            onChange={(facialExpression) =>
+              updateBeat(index, { facialExpression })
+            }
+          />
+          <TextareaField
+            label="Body language"
+            value={beat.bodyLanguage || ""}
+            onChange={(bodyLanguage) => updateBeat(index, { bodyLanguage })}
+          />
+          <TextField
+            label="Micro action"
+            value={beat.microAction || ""}
+            onChange={(microAction) => updateBeat(index, { microAction })}
+          />
+          <TextField
+            label="Gaze"
+            value={beat.gaze || ""}
+            onChange={(gaze) => updateBeat(index, { gaze })}
+          />
+        </div>
+      ))}
+    </div>
+  )
+}
+
 function KeyframeSlots({
   scene,
   latestTaskByTarget,
@@ -1149,11 +1586,13 @@ function TextField({
   value,
   onChange,
   disabled = false,
+  type = "text",
 }: {
   label: string
   value: string
   onChange: (value: string) => void
   disabled?: boolean
+  type?: string
 }) {
   return (
     <label className="grid gap-1 text-xs font-medium text-zinc-600">
@@ -1161,6 +1600,7 @@ function TextField({
       <input
         className="h-9 rounded-md border border-zinc-300 px-2 text-sm text-zinc-900"
         disabled={disabled}
+        type={type}
         value={value}
         onChange={(event) => onChange(event.target.value)}
       />
@@ -1232,6 +1672,22 @@ function normalizeVoiceLines(
       emotion: "",
       delivery: "",
       line: "",
+    },
+  ]
+}
+
+function normalizeActingBeats(
+  actingBeats?: AdActingBeat[] | null
+): AdActingBeat[] {
+  if (actingBeats?.length) return actingBeats
+  return [
+    {
+      timing: "",
+      emotion: "",
+      facialExpression: "",
+      bodyLanguage: "",
+      microAction: "",
+      gaze: "",
     },
   ]
 }

@@ -25,6 +25,21 @@ export async function createAdProject(payload: CreateAdProjectPayload) {
   if (payload.productContext) {
     formData.append("productContext", payload.productContext)
   }
+  if (payload.scriptTimeline) {
+    formData.append("scriptTimeline", payload.scriptTimeline)
+  }
+  if (payload.characterBrief) {
+    formData.append("characterBrief", payload.characterBrief)
+  }
+  if (payload.locationBrief) {
+    formData.append("locationBrief", payload.locationBrief)
+  }
+  if (payload.durationRangeMinSec) {
+    formData.append("durationRangeMinSec", payload.durationRangeMinSec)
+  }
+  if (payload.durationRangeMaxSec) {
+    formData.append("durationRangeMaxSec", payload.durationRangeMaxSec)
+  }
 
   return httpRequest.post("/ads/projects", formData, {
     headers: { "Content-Type": "multipart/form-data" },
@@ -37,6 +52,12 @@ export async function getAdProject(projectId: string) {
 
 export async function runAdPlan(projectId: string) {
   return httpRequest.post(`/ads/projects/${projectId}/plan`) as unknown as AdGenerationTask
+}
+
+export async function importAdPlanJson(projectId: string, rawPlan: string) {
+  return httpRequest.post(`/ads/projects/${projectId}/plan/import`, {
+    rawPlan,
+  }) as unknown as AdProject
 }
 
 export async function generateAsset(assetId: string) {
