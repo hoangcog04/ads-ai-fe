@@ -1,9 +1,14 @@
-import httpRequest from "@/lib/axios"
 import type {
   AdGenerationTask,
   AdProject,
+  AdProjectListItem,
   CreateAdProjectPayload,
+  RenderManualGuidePayload,
+  RenderManualGuideResponse,
+  RenderPlanPromptPayload,
+  RenderPlanPromptResponse,
 } from "@/types/ads"
+import httpRequest from "@/lib/axios"
 
 export async function createAdProject(payload: CreateAdProjectPayload) {
   const formData = new FormData()
@@ -17,6 +22,12 @@ export async function createAdProject(payload: CreateAdProjectPayload) {
   const productImages = payload.productImages ?? []
   for (const image of productImages) {
     formData.append("productImages", image)
+  }
+  if (payload.productReferencesMeta?.length) {
+    formData.append(
+      "productReferencesMeta",
+      JSON.stringify(payload.productReferencesMeta)
+    )
   }
   if (productImages.length === 0 && payload.productImage) {
     formData.append("productImage", payload.productImage)
@@ -46,12 +57,18 @@ export async function createAdProject(payload: CreateAdProjectPayload) {
   }) as unknown as AdProject
 }
 
+export async function listAdProjects() {
+  return httpRequest.get("/ads/projects") as unknown as AdProjectListItem[]
+}
+
 export async function getAdProject(projectId: string) {
   return httpRequest.get(`/ads/projects/${projectId}`) as unknown as AdProject
 }
 
 export async function runAdPlan(projectId: string) {
-  return httpRequest.post(`/ads/projects/${projectId}/plan`) as unknown as AdGenerationTask
+  return httpRequest.post(
+    `/ads/projects/${projectId}/plan`
+  ) as unknown as AdGenerationTask
 }
 
 export async function importAdPlanJson(projectId: string, rawPlan: string) {
@@ -61,14 +78,19 @@ export async function importAdPlanJson(projectId: string, rawPlan: string) {
 }
 
 export async function generateAsset(assetId: string) {
-  return httpRequest.post(`/ads/assets/${assetId}/generate`) as unknown as AdGenerationTask
+  return httpRequest.post(
+    `/ads/assets/${assetId}/generate`
+  ) as unknown as AdGenerationTask
 }
 
 export async function updateScene(
   sceneId: string,
   payload: Record<string, unknown>
 ) {
-  return httpRequest.patch(`/ads/scenes/${sceneId}`, payload) as unknown as AdProject
+  return httpRequest.patch(
+    `/ads/scenes/${sceneId}`,
+    payload
+  ) as unknown as AdProject
 }
 
 export async function updateSceneVideoPrompt(
@@ -93,7 +115,9 @@ export async function rewriteScene(sceneId: string, instruction: string) {
 }
 
 export async function generateKeyframe(sceneId: string) {
-  return httpRequest.post(`/ads/scenes/${sceneId}/keyframe`) as unknown as AdGenerationTask
+  return httpRequest.post(
+    `/ads/scenes/${sceneId}/keyframe`
+  ) as unknown as AdGenerationTask
 }
 
 export async function selectKeyframe(sceneId: string, imageUrl: string) {
@@ -111,7 +135,6 @@ export async function addProductReference(
     visualDescription?: string
     lockPrompt?: string
     useWhen?: string
-    isPrimary?: boolean
   }
 ) {
   const formData = new FormData()
@@ -123,12 +146,13 @@ export async function addProductReference(
   }
   if (payload.lockPrompt) formData.append("lockPrompt", payload.lockPrompt)
   if (payload.useWhen) formData.append("useWhen", payload.useWhen)
-  if (payload.isPrimary !== undefined) {
-    formData.append("isPrimary", String(payload.isPrimary))
-  }
-  return httpRequest.post(`/ads/projects/${projectId}/product-references`, formData, {
-    headers: { "Content-Type": "multipart/form-data" },
-  }) as unknown as AdProject
+  return httpRequest.post(
+    `/ads/projects/${projectId}/product-references`,
+    formData,
+    {
+      headers: { "Content-Type": "multipart/form-data" },
+    }
+  ) as unknown as AdProject
 }
 
 export async function updateProductReference(
@@ -167,5 +191,21 @@ export async function selectKeyframeSlotCandidate(
 }
 
 export async function generateVideo(sceneId: string) {
-  return httpRequest.post(`/ads/scenes/${sceneId}/video`) as unknown as AdGenerationTask
+  return httpRequest.post(
+    `/ads/scenes/${sceneId}/video`
+  ) as unknown as AdGenerationTask
+}
+
+export async function renderPlanPrompt(payload: RenderPlanPromptPayload) {
+  return httpRequest.post(
+    "/ads/prompt-export/plan-prompt",
+    payload
+  ) as unknown as RenderPlanPromptResponse
+}
+
+export async function renderManualGuide(payload: RenderManualGuidePayload) {
+  return httpRequest.post(
+    "/ads/prompt-export/manual-guide",
+    payload
+  ) as unknown as RenderManualGuideResponse
 }

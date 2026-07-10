@@ -6,5 +6,7 @@ export const LS_KEYS = {
 export const ROUTES = {
   ROOT: "/",
   LOGIN: "/login",
-  PRODUCT: "/product",
+  ADS_VIDEO: "/ads-video",
+  EXPORT_PROMPTS: "/export-prompts",
+  LEGACY_PRODUCT: "/product",
 }

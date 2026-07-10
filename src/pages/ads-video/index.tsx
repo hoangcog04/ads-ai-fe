@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { useNavigate, useParams } from "react-router-dom"
 import {
   Camera,
   CheckCircle2,
@@ -15,6 +16,7 @@ import {
   Video,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { ROUTES } from "@/constants"
 import {
   addProductReference,
   createAdProject,
@@ -24,6 +26,7 @@ import {
   generateVideo,
   getAdProject,
   importAdPlanJson,
+  listAdProjects,
   regenerateSceneVideoPrompt,
   rewriteScene,
   runAdPlan,
@@ -39,11 +42,11 @@ import type {
   AdGenerationTask,
   AdKeyframePromptSlot,
   AdProject,
+  AdProjectListItem,
   AdScene,
   AdVoiceLine,
 } from "@/types/ads"
 
-const PROJECT_STORAGE_KEY = "adsMvpProjectId"
 const PRODUCT_KIND_OPTIONS = [
   "app_screen",
   "physical_product",
@@ -59,6 +62,13 @@ const VOICE_LANGUAGE_OPTIONS = [
   { value: "en", label: "English" },
   { value: "es", label: "Spanish" },
 ]
+const DURATION_RANGE_OPTIONS = [
+  { value: "", label: "Auto" },
+  { value: "15-20", label: "15-20s" },
+  { value: "20-30", label: "20-30s" },
+  { value: "30-40", label: "30-40s" },
+  { value: "40-60", label: "40-60s" },
+]
 const WORKSPACE_STAGES = [
   { id: "plan", label: "Plan" },
   { id: "references", label: "References" },
@@ -67,14 +77,66 @@ const WORKSPACE_STAGES = [
 ] as const
 
 type WorkspaceStage = (typeof WORKSPACE_STAGES)[number]["id"]
+type ProductImageDraft = {
+  file: File
+  previewUrl: string
+  name: string
+  kind: string
+  visualDescription: string
+}
 
-function ProductPage() {
-  const [projectId, setProjectId] = useState(() =>
-    localStorage.getItem(PROJECT_STORAGE_KEY)
-  )
+function sanitizeProductRefName(fileName: string, index: number) {
+  const withoutExtension = fileName.replace(/\.[^.]+$/, "")
+  const normalized = withoutExtension
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+  return normalized || `i_product_${index + 1}`
+}
+
+function inferProductKind(fileName: string) {
+  const normalized = fileName.toLowerCase()
+  if (normalized.includes("logo")) return "logo"
+  if (
+    normalized.includes("screen") ||
+    normalized.includes("scan") ||
+    normalized.includes("home") ||
+    normalized.includes("result")
+  ) {
+    return "app_screen"
+  }
+  return "other"
+}
+
+function buildProductContext(
+  refs: Array<{ name?: string; visualDescription?: string }>,
+) {
+  return refs
+    .map((ref, index) => {
+      const name = ref.name?.trim() || `i_product_${index + 1}`
+      const description = ref.visualDescription?.trim()
+      return description ? `${name}:\n${description}` : `${name}:`
+    })
+    .join("\n\n")
+}
+
+function splitDurationRange(value: string) {
+  const [min, max] = value.split("-")
+  return [min || "", max || ""]
+}
+
+function AdsVideoPage() {
+  const { projectId } = useParams<{ projectId?: string }>()
+  const navigate = useNavigate()
   const [workspaceStage, setWorkspaceStage] =
     useState<WorkspaceStage>("plan")
   const queryClient = useQueryClient()
+
+  const projectsQuery = useQuery({
+    queryKey: ["ads-projects"],
+    queryFn: listAdProjects,
+  })
 
   const projectQuery = useQuery({
     queryKey: ["ads-project", projectId],
@@ -96,16 +158,17 @@ function ProductPage() {
   const refreshProject = () => {
     if (projectId) {
       void queryClient.invalidateQueries({ queryKey: ["ads-project", projectId] })
+      void queryClient.invalidateQueries({ queryKey: ["ads-projects"] })
     }
   }
 
   const createMutation = useMutation({
     mutationFn: createAdProject,
     onSuccess: (created) => {
-      localStorage.setItem(PROJECT_STORAGE_KEY, created.id)
-      setProjectId(created.id)
       setWorkspaceStage("plan")
       queryClient.setQueryData(["ads-project", created.id], created)
+      void queryClient.invalidateQueries({ queryKey: ["ads-projects"] })
+      navigate(`${ROUTES.ADS_VIDEO}/${created.id}`)
     },
   })
 
@@ -150,9 +213,8 @@ function ProductPage() {
   })
 
   const resetProject = () => {
-    localStorage.removeItem(PROJECT_STORAGE_KEY)
-    setProjectId(null)
     setWorkspaceStage("plan")
+    navigate(ROUTES.ADS_VIDEO)
   }
 
   useEffect(() => {
@@ -172,15 +234,42 @@ function ProductPage() {
     }
   }, [project, workspaceStage])
 
-  if (!projectId || !project) {
+  if (!projectId) {
     return (
       <main className="min-h-screen bg-zinc-50 px-4 py-6 text-zinc-950">
-        <div className="mx-auto max-w-5xl">
+        <div className="mx-auto grid max-w-7xl gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
           <BriefPanel
             isSubmitting={createMutation.isPending}
             error={readMutationError(createMutation.error)}
             onCreate={(payload) => createMutation.mutate(payload)}
           />
+          <ProjectListPanel
+            projects={projectsQuery.data ?? []}
+            isLoading={projectsQuery.isLoading}
+            onOpen={(id) => navigate(`${ROUTES.ADS_VIDEO}/${id}`)}
+          />
+        </div>
+      </main>
+    )
+  }
+
+  if (!project) {
+    return (
+      <main className="min-h-screen bg-zinc-50 px-4 py-6 text-zinc-950">
+        <div className="mx-auto max-w-5xl rounded-lg border border-zinc-200 bg-white p-6 text-sm shadow-sm">
+          {projectQuery.isLoading ? (
+            <span className="inline-flex items-center gap-2">
+              <Loader2 className="size-4 animate-spin" />
+              Loading project...
+            </span>
+          ) : (
+            <div className="grid gap-3">
+              <p className="font-medium text-red-700">Project not found.</p>
+              <Button className="w-fit" variant="outline" onClick={resetProject}>
+                Back to projects
+              </Button>
+            </div>
+          )}
         </div>
       </main>
     )
@@ -228,7 +317,7 @@ function ProductPage() {
               Generate Plan
             </Button>
             <Button variant="outline" onClick={resetProject}>
-              New
+              Projects
             </Button>
           </div>
         </header>
@@ -333,7 +422,7 @@ function StageTabs({
     plan: sceneCount ? `${sceneCount} scenes` : "create or import plan",
     references: hasReadyReferences ? "refs ready" : "generate char/location",
     keyframes: selectedKeyframes ? `${selectedKeyframes} selected` : "select refs",
-    videos: "provider stub",
+    videos: "Flow video",
   }
 
   return (
@@ -483,6 +572,81 @@ function ReferenceReadinessRow({
   )
 }
 
+function ProjectListPanel({
+  projects,
+  isLoading,
+  onOpen,
+}: {
+  projects: AdProjectListItem[]
+  isLoading: boolean
+  onOpen: (projectId: string) => void
+}) {
+  return (
+    <section className="grid content-start gap-3 rounded-lg border border-zinc-200 bg-white p-4 shadow-sm">
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2 text-sm font-semibold">
+          <Film className="size-4" />
+          Projects
+        </div>
+        <span className="rounded-md bg-zinc-100 px-2 py-1 text-xs text-zinc-600">
+          DB
+        </span>
+      </div>
+      {isLoading && (
+        <p className="inline-flex items-center gap-2 text-sm text-zinc-500">
+          <Loader2 className="size-4 animate-spin" />
+          Loading projects...
+        </p>
+      )}
+      {!isLoading && projects.length === 0 && (
+        <p className="text-sm leading-5 text-zinc-500">
+          No ads projects yet. Create one from the form.
+        </p>
+      )}
+      <div className="grid gap-2">
+        {projects.map((project) => (
+          <button
+            key={project.id}
+            className="grid grid-cols-[56px_minmax(0,1fr)] gap-3 rounded-md border border-zinc-200 p-2 text-left transition hover:border-zinc-900"
+            onClick={() => onOpen(project.id)}
+          >
+            <div className="flex aspect-square items-center justify-center overflow-hidden rounded-md bg-zinc-100">
+              {project.productImageUrl ? (
+                <img
+                  src={project.productImageUrl}
+                  alt=""
+                  className="h-full w-full object-cover"
+                />
+              ) : (
+                <ImageIcon className="size-5 text-zinc-400" />
+              )}
+            </div>
+            <div className="min-w-0">
+              <div className="truncate text-sm font-semibold">
+                {project.title || "Untitled ads project"}
+              </div>
+              <div className="mt-1 line-clamp-2 text-xs leading-4 text-zinc-500">
+                {project.brief}
+              </div>
+              <div className="mt-2 flex flex-wrap gap-1 text-[11px] text-zinc-500">
+                <span className="rounded bg-zinc-100 px-1.5 py-0.5">
+                  {project.sceneCount} scenes
+                </span>
+                <span className="rounded bg-zinc-100 px-1.5 py-0.5">
+                  {project.productReferenceCount} refs
+                </span>
+                <span className="rounded bg-zinc-100 px-1.5 py-0.5">
+                  {project.status}
+                </span>
+              </div>
+            </div>
+          </button>
+        ))}
+      </div>
+    </section>
+  )
+}
+
 function BriefPanel({
   isSubmitting,
   error,
@@ -494,6 +658,11 @@ function BriefPanel({
     brief: string
     title?: string
     productContext?: string
+    productReferencesMeta?: Array<{
+      name?: string
+      kind?: string
+      visualDescription?: string
+    }>
     scriptTimeline?: string
     characterBrief?: string
     locationBrief?: string
@@ -507,27 +676,68 @@ function BriefPanel({
 }) {
   const [brief, setBrief] = useState("")
   const [title, setTitle] = useState("")
-  const [productContext, setProductContext] = useState("")
   const [scriptTimeline, setScriptTimeline] = useState("")
   const [characterBrief, setCharacterBrief] = useState("")
   const [locationBrief, setLocationBrief] = useState("")
   const [aspectRatio, setAspectRatio] = useState("9:16")
-  const [durationRangeMinSec, setDurationRangeMinSec] = useState("")
-  const [durationRangeMaxSec, setDurationRangeMaxSec] = useState("")
+  const [durationRange, setDurationRange] = useState("")
   const [voiceLanguage, setVoiceLanguage] = useState("auto")
   const [overlayEnabled, setOverlayEnabled] = useState(false)
-  const [productImages, setProductImages] = useState<File[]>([])
+  const [productRefs, setProductRefs] = useState<ProductImageDraft[]>([])
+  const productRefsRef = useRef<ProductImageDraft[]>([])
+
+  useEffect(() => {
+    productRefsRef.current = productRefs
+  }, [productRefs])
+
+  useEffect(() => {
+    return () => {
+      productRefsRef.current.forEach((ref) => URL.revokeObjectURL(ref.previewUrl))
+    }
+  }, [])
+
+  const handleProductFilesChange = (files: FileList | null) => {
+    productRefs.forEach((ref) => URL.revokeObjectURL(ref.previewUrl))
+    setProductRefs(
+      Array.from(files ?? []).map((file, index) => ({
+        file,
+        previewUrl: URL.createObjectURL(file),
+        name: sanitizeProductRefName(file.name, index),
+        kind: inferProductKind(file.name),
+        visualDescription: "",
+      })),
+    )
+  }
+
+  const updateProductRef = (
+    index: number,
+    patch: Partial<Omit<ProductImageDraft, "file" | "previewUrl">>,
+  ) => {
+    setProductRefs((prev) =>
+      prev.map((ref, refIndex) =>
+        refIndex === index ? { ...ref, ...patch } : ref,
+      ),
+    )
+  }
 
   return (
     <form
       className="grid gap-4 rounded-lg border border-zinc-200 bg-white p-4 shadow-sm"
       onSubmit={(event) => {
         event.preventDefault()
-        if (productImages.length === 0) return
+        if (productRefs.length === 0) return
+        const productReferencesMeta = productRefs.map((ref) => ({
+          name: ref.name,
+          kind: ref.kind,
+          visualDescription: ref.visualDescription,
+        }))
+        const [durationRangeMinSec, durationRangeMaxSec] =
+          splitDurationRange(durationRange)
         onCreate({
           brief,
           title,
-          productContext,
+          productContext: buildProductContext(productReferencesMeta),
+          productReferencesMeta,
           scriptTimeline,
           characterBrief,
           locationBrief,
@@ -536,7 +746,7 @@ function BriefPanel({
           durationRangeMaxSec,
           voiceLanguage,
           overlayEnabled,
-          productImages,
+          productImages: productRefs.map((ref) => ref.file),
         })
       }}
     >
@@ -552,14 +762,6 @@ function BriefPanel({
           required
           value={brief}
           onChange={(event) => setBrief(event.target.value)}
-        />
-      </label>
-      <label className="grid gap-1 text-sm">
-        <span className="font-medium">Product context</span>
-        <textarea
-          className="min-h-20 rounded-md border border-zinc-300 p-3 leading-5"
-          value={productContext}
-          onChange={(event) => setProductContext(event.target.value)}
         />
       </label>
       <label className="grid gap-1 text-sm">
@@ -623,25 +825,73 @@ function BriefPanel({
             multiple
             type="file"
             accept="image/*"
-            onChange={(event) =>
-              setProductImages(Array.from(event.target.files ?? []))
-            }
+            onChange={(event) => handleProductFilesChange(event.target.files)}
           />
         </label>
       </div>
+      {productRefs.length > 0 && (
+        <div className="grid gap-3">
+          {productRefs.map((ref, index) => (
+            <div
+              key={`${ref.file.name}-${index}`}
+              className="grid gap-3 rounded-md border border-zinc-200 p-3 md:grid-cols-[120px_1fr]"
+            >
+              <img
+                src={ref.previewUrl}
+                alt={ref.name}
+                className="aspect-[9/12] w-full rounded-md object-cover"
+              />
+              <div className="grid gap-2">
+                <div className="grid gap-2 sm:grid-cols-[1fr_150px]">
+                  <TextField
+                    label="Image id/name"
+                    value={ref.name}
+                    onChange={(name) => updateProductRef(index, { name })}
+                  />
+                  <label className="grid gap-1 text-xs font-medium text-zinc-600">
+                    Kind
+                    <select
+                      className="h-9 rounded-md border border-zinc-300 px-2 text-sm text-zinc-900"
+                      value={ref.kind}
+                      onChange={(event) =>
+                        updateProductRef(index, { kind: event.target.value })
+                      }
+                    >
+                      {PRODUCT_KIND_OPTIONS.map((kind) => (
+                        <option key={kind} value={kind}>
+                          {kind}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+                <TextareaField
+                  label="Image context"
+                  value={ref.visualDescription}
+                  onChange={(visualDescription) =>
+                    updateProductRef(index, { visualDescription })
+                  }
+                />
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
       <div className="grid gap-3 sm:grid-cols-2">
-        <TextField
-          label="Duration range min sec"
-          value={durationRangeMinSec}
-          onChange={setDurationRangeMinSec}
-          type="number"
-        />
-        <TextField
-          label="Duration range max sec"
-          value={durationRangeMaxSec}
-          onChange={setDurationRangeMaxSec}
-          type="number"
-        />
+        <label className="grid gap-1 text-sm">
+          <span className="font-medium">Duration range</span>
+          <select
+            className="h-10 rounded-md border border-zinc-300 px-3"
+            value={durationRange}
+            onChange={(event) => setDurationRange(event.target.value)}
+          >
+            {DURATION_RANGE_OPTIONS.map((option) => (
+              <option key={option.value || "auto"} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </label>
       </div>
       <label className="flex w-fit items-center gap-2 text-sm">
         <input
@@ -652,7 +902,7 @@ function BriefPanel({
         <span className="font-medium">Enable overlay text</span>
       </label>
       {error && <p className="text-sm text-red-600">{error}</p>}
-      <Button className="w-fit" disabled={isSubmitting || !brief || productImages.length === 0}>
+      <Button className="w-fit" disabled={isSubmitting || !brief || productRefs.length === 0}>
         {isSubmitting ? <Loader2 className="animate-spin" /> : <Upload />}
         Create Project
       </Button>
@@ -671,17 +921,23 @@ function ProductReferencesPanel({
 }) {
   const [newFile, setNewFile] = useState<File | null>(null)
   const [newName, setNewName] = useState("")
+  const [newKind, setNewKind] = useState("other")
+  const [newVisualDescription, setNewVisualDescription] = useState("")
   const addMutation = useMutation({
     mutationFn: () => {
       if (!newFile) throw new Error("Product image required")
       return addProductReference(projectId, {
         productImage: newFile,
-        name: newName,
+        name: newName || sanitizeProductRefName(newFile.name, assets.length),
+        kind: newKind,
+        visualDescription: newVisualDescription,
       })
     },
     onSuccess: (updated) => {
       setNewFile(null)
       setNewName("")
+      setNewKind("other")
+      setNewVisualDescription("")
       onSaved(updated)
     },
   })
@@ -695,7 +951,7 @@ function ProductReferencesPanel({
       <div className="grid gap-3">
         {assets.map((asset) => (
           <ProductReferenceCard
-            key={`${asset.id}-${asset.name}-${asset.kind}-${asset.isPrimary}`}
+            key={`${asset.id}-${asset.name}-${asset.kind}`}
             asset={asset}
             onSaved={onSaved}
           />
@@ -708,11 +964,34 @@ function ProductReferencesPanel({
           value={newName}
           onChange={(event) => setNewName(event.target.value)}
         />
+        <select
+          className="h-9 rounded-md border border-zinc-300 px-2 text-sm"
+          value={newKind}
+          onChange={(event) => setNewKind(event.target.value)}
+        >
+          {PRODUCT_KIND_OPTIONS.map((kind) => (
+            <option key={kind} value={kind}>
+              {kind}
+            </option>
+          ))}
+        </select>
         <input
           className="h-9 rounded-md border border-zinc-300 px-2 py-1 text-sm"
           type="file"
           accept="image/*"
-          onChange={(event) => setNewFile(event.target.files?.[0] ?? null)}
+          onChange={(event) => {
+            const file = event.target.files?.[0] ?? null
+            setNewFile(file)
+            if (file && !newName) {
+              setNewName(sanitizeProductRefName(file.name, assets.length))
+              setNewKind(inferProductKind(file.name))
+            }
+          }}
+        />
+        <TextareaField
+          label="Image context"
+          value={newVisualDescription}
+          onChange={setNewVisualDescription}
         />
         <Button
           size="sm"
@@ -741,7 +1020,6 @@ function ProductReferenceCard({
     visualDescription: asset.visualDescription || asset.description || "",
     lockPrompt: asset.lockPrompt || "",
     useWhen: asset.useWhen || "",
-    isPrimary: asset.isPrimary,
   })
   const updateMutation = useMutation({
     mutationFn: () => updateProductReference(asset.id, draft),
@@ -801,16 +1079,6 @@ function ProductReferenceCard({
         value={draft.useWhen}
         onChange={(useWhen) => setDraft((prev) => ({ ...prev, useWhen }))}
       />
-      <label className="flex items-center gap-2 text-xs font-medium text-zinc-600">
-        <input
-          type="checkbox"
-          checked={draft.isPrimary}
-          onChange={(event) =>
-            setDraft((prev) => ({ ...prev, isPrimary: event.target.checked }))
-          }
-        />
-        Primary
-      </label>
       <Button
         size="sm"
         variant="outline"
@@ -1702,4 +1970,4 @@ function readMutationError(error: unknown) {
   return "Request failed"
 }
 
-export default ProductPage
+export default AdsVideoPage

@@ -16,7 +16,6 @@ export type AdAsset = {
   visualDescription?: string | null
   lockPrompt?: string | null
   useWhen?: string | null
-  isPrimary: boolean
   imagePrompt?: string | null
   consistencyPrompt?: string | null
   imageUrl?: string | null
@@ -139,6 +138,22 @@ export type AdProject = {
   tasks: AdGenerationTask[]
 }
 
+export type AdProjectListItem = {
+  id: string
+  title?: string | null
+  brief: string
+  aspectRatio: string
+  voiceLanguage: string
+  overlayEnabled: boolean
+  status: string
+  createdAt: string
+  updatedAt: string
+  productImageUrl?: string | null
+  productReferenceCount: number
+  sceneCount: number
+  taskCount: number
+}
+
 export type CreateAdProjectPayload = {
   brief: string
   title?: string
@@ -154,4 +169,82 @@ export type CreateAdProjectPayload = {
   overlayEnabled: boolean
   productImage?: File
   productImages: File[]
+  productReferencesMeta?: Array<{
+    name?: string
+    kind?: string
+    visualDescription?: string
+    lockPrompt?: string
+    useWhen?: string
+  }>
+}
+
+export type PromptExportProductReference = {
+  id?: string
+  name?: string
+  kind?: string
+  visualDescription?: string
+  lockPrompt?: string
+  useWhen?: string
+  isPrimary?: boolean
+}
+
+export type RenderPlanPromptPayload = {
+  brief: string
+  title?: string
+  productContext?: string
+  scriptTimeline?: string
+  characterBrief?: string
+  locationBrief?: string
+  aspectRatio?: string
+  voiceLanguage?: string
+  overlayEnabled?: boolean
+  durationRangeMinSec?: string
+  durationRangeMaxSec?: string
+  productReferences: PromptExportProductReference[]
+}
+
+export type RenderPlanPromptResponse = {
+  prompt: string
+  productContext: string
+  productReferencesJson: string
+  uploadGuide: Array<{
+    name?: string
+    kind?: string
+    context?: string
+  }>
+}
+
+export type RenderManualGuidePayload = {
+  rawPlan: string
+  aspectRatio?: string
+  voiceLanguage?: string
+  overlayEnabled?: boolean
+  productReferences: PromptExportProductReference[]
+}
+
+export type ManualPromptBlock = {
+  label?: string
+  kind?: string
+  sceneIndex?: number
+  slotIndex?: number
+  title?: string
+  mediaInputs?: string[]
+  outputName: string
+  durationSec?: number
+  prompt: string
+}
+
+export type RenderManualGuideResponse = {
+  summary: {
+    productReferenceCount: number
+    sceneCount: number
+    keyframePromptCount: number
+    videoPromptCount: number
+    characterName: string
+    locationName: string
+  }
+  referencePrompts: ManualPromptBlock[]
+  keyframePrompts: ManualPromptBlock[]
+  videoPrompts: ManualPromptBlock[]
+  warnings: string[]
 }
