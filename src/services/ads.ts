@@ -165,6 +165,16 @@ export async function updateProductReference(
   ) as unknown as AdProject
 }
 
+export async function updateReferenceAsset(
+  assetId: string,
+  payload: Record<string, unknown>
+) {
+  return httpRequest.patch(
+    `/ads/assets/${assetId}/reference`,
+    payload
+  ) as unknown as AdProject
+}
+
 export async function updateKeyframePromptSlot(
   slotId: string,
   payload: Record<string, unknown>

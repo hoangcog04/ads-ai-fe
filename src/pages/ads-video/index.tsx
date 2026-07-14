@@ -33,6 +33,7 @@ import {
   selectKeyframeSlotCandidate,
   updateKeyframePromptSlot,
   updateProductReference,
+  updateReferenceAsset,
   updateScene,
   updateSceneVideoPrompt,
 } from "@/services/ads"
@@ -344,6 +345,9 @@ function AdsVideoPage() {
               task={character ? latestTaskByTarget.get(`AdAsset:${character.id}`) : undefined}
               isSubmitting={assetMutation.isPending}
               onGenerate={(assetId) => assetMutation.mutate(assetId)}
+              onSaved={(updated) =>
+                queryClient.setQueryData(["ads-project", updated.id], updated)
+              }
             />
             <ReferenceCard
               label="Location"
@@ -351,6 +355,9 @@ function AdsVideoPage() {
               task={location ? latestTaskByTarget.get(`AdAsset:${location.id}`) : undefined}
               isSubmitting={assetMutation.isPending}
               onGenerate={(assetId) => assetMutation.mutate(assetId)}
+              onSaved={(updated) =>
+                queryClient.setQueryData(["ads-project", updated.id], updated)
+              }
             />
           </aside>
 
@@ -1098,14 +1105,49 @@ function ReferenceCard({
   task,
   isSubmitting,
   onGenerate,
+  onSaved,
 }: {
   label: string
   asset?: AdAsset
   task?: AdGenerationTask
   isSubmitting: boolean
   onGenerate: (assetId: string) => void
+  onSaved: (project: AdProject) => void
 }) {
   const running = isRunning(task)
+  const lowerLabel = label.toLowerCase()
+  const descriptionLabel = lowerLabel.includes("location")
+    ? "Location description"
+    : "Character description"
+  const lockLabel = lowerLabel.includes("location") ? "Location lock" : "Identity lock"
+  const [draft, setDraft] = useState({
+    name: asset?.name || "",
+    description: asset?.description || "",
+    imagePrompt: asset?.imagePrompt || "",
+    consistencyPrompt: asset?.consistencyPrompt || "",
+  })
+  useEffect(() => {
+    setDraft({
+      name: asset?.name || "",
+      description: asset?.description || "",
+      imagePrompt: asset?.imagePrompt || "",
+      consistencyPrompt: asset?.consistencyPrompt || "",
+    })
+  }, [
+    asset?.id,
+    asset?.name,
+    asset?.description,
+    asset?.imagePrompt,
+    asset?.consistencyPrompt,
+  ])
+  const updateMutation = useMutation({
+    mutationFn: () => {
+      if (!asset) throw new Error("Reference asset required")
+      return updateReferenceAsset(asset.id, draft)
+    },
+    onSuccess: onSaved,
+  })
+
   return (
     <section className="rounded-lg border border-zinc-200 bg-white p-3 shadow-sm">
       <div className="flex items-center justify-between gap-2">
@@ -1131,6 +1173,49 @@ function ReferenceCard({
       <p className="mt-2 line-clamp-3 text-xs leading-4 text-zinc-600">
         {asset?.description || "Waiting for plan"}
       </p>
+      {asset && (
+        <div className="mt-3 grid gap-2 border-t border-zinc-200 pt-3">
+          <TextField
+            label="Name"
+            value={draft.name}
+            onChange={(name) => setDraft((prev) => ({ ...prev, name }))}
+          />
+          <TextareaField
+            label="Primary image prompt"
+            value={draft.imagePrompt}
+            onChange={(imagePrompt) =>
+              setDraft((prev) => ({ ...prev, imagePrompt }))
+            }
+          />
+          <TextareaField
+            label={descriptionLabel}
+            value={draft.description}
+            onChange={(description) =>
+              setDraft((prev) => ({ ...prev, description }))
+            }
+          />
+          <TextareaField
+            label={lockLabel}
+            value={draft.consistencyPrompt}
+            onChange={(consistencyPrompt) =>
+              setDraft((prev) => ({ ...prev, consistencyPrompt }))
+            }
+          />
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={updateMutation.isPending}
+            onClick={() => updateMutation.mutate()}
+          >
+            {updateMutation.isPending ? (
+              <Loader2 className="animate-spin" />
+            ) : (
+              <Save />
+            )}
+            Save Specs
+          </Button>
+        </div>
+      )}
       <Button
         className="mt-3 w-full"
         size="sm"
@@ -1221,6 +1306,9 @@ function SceneList({
         <SceneCard
           key={`${scene.id}-${scene.updatedAt}`}
           scene={scene}
+          productReferences={project.assets.filter(
+            (asset) => asset.type === "PRODUCT"
+          )}
           overlayEnabled={project.overlayEnabled}
           latestTaskByTarget={latestTaskByTarget}
           sceneTask={latestTaskByTarget.get(`AdScene:${scene.id}`)}
@@ -1237,6 +1325,7 @@ function SceneList({
 
 function SceneCard({
   scene,
+  productReferences,
   overlayEnabled,
   latestTaskByTarget,
   sceneTask,
@@ -1247,6 +1336,7 @@ function SceneCard({
   onRefresh,
 }: {
   scene: AdScene
+  productReferences: AdAsset[]
   overlayEnabled: boolean
   latestTaskByTarget: Map<string, AdGenerationTask>
   sceneTask?: AdGenerationTask
@@ -1481,6 +1571,7 @@ function SceneCard({
         <div className="grid gap-3">
           <KeyframeSlots
             scene={{ ...scene, keyframePromptSlots }}
+            productReferences={productReferences}
             latestTaskByTarget={latestTaskByTarget}
             onSaved={onSaved}
             onRefresh={onRefresh}
@@ -1675,12 +1766,14 @@ function ActingBeatsEditor({
 
 function KeyframeSlots({
   scene,
+  productReferences,
   latestTaskByTarget,
   onSaved,
   onRefresh,
   onGenerateLegacyKeyframe,
 }: {
   scene: AdScene
+  productReferences: AdAsset[]
   latestTaskByTarget: Map<string, AdGenerationTask>
   onSaved: (project: AdProject) => void
   onRefresh: () => void
@@ -1709,6 +1802,7 @@ function KeyframeSlots({
         <KeyframeSlotCard
           key={`${slot.id}-${slot.selectedCandidateId}-${slot.stale}`}
           slot={slot}
+          productReferences={productReferences}
           task={latestTaskByTarget.get(`AdKeyframePromptSlot:${slot.id}`)}
           onSaved={onSaved}
           onRefresh={onRefresh}
@@ -1720,11 +1814,13 @@ function KeyframeSlots({
 
 function KeyframeSlotCard({
   slot,
+  productReferences,
   task,
   onSaved,
   onRefresh,
 }: {
   slot: AdKeyframePromptSlot
+  productReferences: AdAsset[]
   task?: AdGenerationTask
   onSaved: (project: AdProject) => void
   onRefresh: () => void
@@ -1734,7 +1830,10 @@ function KeyframeSlotCard({
     timing: slot.timing || "",
     purpose: slot.purpose,
     prompt: slot.prompt,
-    productReferenceIds: slot.productReferenceIds || [],
+    productReferenceIds: normalizeProductReferenceIds(
+      slot.productReferenceIds,
+      productReferences
+    ),
   })
   const updateMutation = useMutation({
     mutationFn: () => updateKeyframePromptSlot(slot.id, draft),
@@ -1786,6 +1885,47 @@ function KeyframeSlotCard({
         value={draft.prompt}
         onChange={(prompt) => setDraft((prev) => ({ ...prev, prompt }))}
       />
+      <fieldset className="grid gap-2 border-0 p-0">
+        <legend className="text-xs font-medium text-zinc-600">
+          Product references
+        </legend>
+        {productReferences.length ? (
+          <div className="grid gap-1">
+            {productReferences.map((reference) => {
+              const selected = draft.productReferenceIds.includes(reference.id)
+              return (
+                <label
+                  key={reference.id}
+                  className="flex min-h-9 items-center gap-2 border-b border-zinc-100 py-1 text-sm text-zinc-800 last:border-b-0"
+                >
+                  <input
+                    type="checkbox"
+                    checked={selected}
+                    onChange={(event) => {
+                      setDraft((prev) => ({
+                        ...prev,
+                        productReferenceIds: event.target.checked
+                          ? [...prev.productReferenceIds, reference.id]
+                          : prev.productReferenceIds.filter(
+                              (id) => id !== reference.id
+                            ),
+                      }))
+                    }}
+                  />
+                  <span className="min-w-0 truncate">{reference.name}</span>
+                  {reference.kind && (
+                    <span className="ml-auto text-xs text-zinc-400">
+                      {reference.kind}
+                    </span>
+                  )}
+                </label>
+              )
+            })}
+          </div>
+        ) : (
+          <span className="text-xs text-zinc-500">No product references</span>
+        )}
+      </fieldset>
       <div className="overflow-hidden rounded-md border border-zinc-200 bg-zinc-100">
         {slot.selectedCandidate?.imageUrl ? (
           <img
@@ -1845,8 +1985,25 @@ function KeyframeSlotCard({
           {slot.selectedCandidate.warning}
         </p>
       )}
+      {updateMutation.error && (
+        <p className="rounded-md bg-red-50 p-2 text-xs leading-4 text-red-700">
+          {readMutationError(updateMutation.error)}
+        </p>
+      )}
     </div>
   )
+}
+
+function normalizeProductReferenceIds(
+  productReferenceIds: string[] | null | undefined,
+  productReferences: AdAsset[]
+) {
+  const selected = new Set(productReferenceIds || [])
+  return productReferences
+    .filter(
+      (reference) => selected.has(reference.id) || selected.has(reference.name)
+    )
+    .map((reference) => reference.id)
 }
 
 function TextField({

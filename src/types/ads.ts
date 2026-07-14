@@ -200,6 +200,7 @@ export type RenderPlanPromptPayload = {
   overlayEnabled?: boolean
   durationRangeMinSec?: string
   durationRangeMaxSec?: string
+  manualRunId?: string
   productReferences: PromptExportProductReference[]
 }
 
@@ -209,6 +210,7 @@ export type RenderPlanPromptResponse = {
   productReferencesJson: string
   uploadGuide: Array<{
     name?: string
+    flowName?: string
     kind?: string
     context?: string
   }>
@@ -219,6 +221,7 @@ export type RenderManualGuidePayload = {
   aspectRatio?: string
   voiceLanguage?: string
   overlayEnabled?: boolean
+  manualRunId?: string
   productReferences: PromptExportProductReference[]
 }
 

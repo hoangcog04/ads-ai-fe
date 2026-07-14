@@ -45,6 +45,7 @@ type ProductImageDraft = {
 }
 
 function ExportPromptsPage() {
+  const [manualRunId] = useState(() => createManualRunId())
   const [title, setTitle] = useState("")
   const [brief, setBrief] = useState("")
   const [scriptTimeline, setScriptTimeline] = useState("")
@@ -90,6 +91,7 @@ function ExportPromptsPage() {
         durationRangeMinSec,
         durationRangeMaxSec,
         overlayEnabled,
+        manualRunId,
         productReferences,
       }),
     onSuccess: (result) => {
@@ -105,6 +107,7 @@ function ExportPromptsPage() {
         aspectRatio,
         voiceLanguage,
         overlayEnabled,
+        manualRunId,
         productReferences,
       }),
     onSuccess: setGuideResult,
@@ -296,7 +299,9 @@ function ExportPromptsPage() {
           <section className="grid content-start gap-4">
             <GuideBox title="Manual Flow">
               <ol className="grid list-decimal gap-1 pl-4 text-sm leading-5 text-zinc-600">
-                <li>Upload the product refs to GPT/Flow with the same names.</li>
+                <li>Manual run id: {manualRunId}</li>
+                <li>Upload the product refs to GPT with their logical names.</li>
+                <li>In Flow, rename uploaded/generated assets to the full output names shown here.</li>
                 <li>Copy the rendered plan prompt into GPT.</li>
                 <li>Paste the returned JSON below.</li>
                 <li>Copy reference, keyframe, and video prompts in order.</li>
@@ -311,6 +316,11 @@ function ExportPromptsPage() {
                       className="rounded-md bg-zinc-50 p-2 text-xs leading-4"
                     >
                       <div className="font-semibold">{item.name}</div>
+                      {item.flowName ? (
+                        <div className="mt-1 font-mono text-[11px] text-zinc-900">
+                          Flow rename: {item.flowName}
+                        </div>
+                      ) : null}
                       <div className="text-zinc-500">{item.kind}</div>
                       <div className="mt-1 text-zinc-700">{item.context}</div>
                     </div>
@@ -633,6 +643,19 @@ function readMutationError(error: unknown) {
   if (!error) return null
   if (error instanceof Error) return error.message
   return "Request failed"
+}
+
+function createManualRunId() {
+  const now = new Date()
+  const stamp = [
+    now.getFullYear(),
+    String(now.getMonth() + 1).padStart(2, "0"),
+    String(now.getDate()).padStart(2, "0"),
+    String(now.getHours()).padStart(2, "0"),
+    String(now.getMinutes()).padStart(2, "0"),
+  ].join("")
+  const random = Math.random().toString(36).slice(2, 6)
+  return `manual_${stamp}_${random}`
 }
 
 export default ExportPromptsPage
