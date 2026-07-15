@@ -1,69 +1,29 @@
-# React + TypeScript + Vite
+# Ads AI Frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+React/Vite UI for Ads Video Tool Projects.
 
-Currently, two official plugins are available:
+## Main workflow
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+1. Create project and Product Reference Set.
+2. Run/import plan, then generate Character and Location.
+3. Explicitly upload product refs to Google Flow.
+4. Generate/select candidates for every Keyframe Prompt Slot.
+5. Generate each Scene Video.
+6. Merge all completed scene videos, preview, or download Final Ad Video.
 
-## Expanding the ESLint configuration
+## API-bound actions
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+- Product Flow upload: `POST /ads/projects/:projectId/flow/product-refs/upload`.
+- Keyframe slot generation/selection: `/ads/keyframe-slots/:slotId/generate` and `/ads/keyframe-slots/:slotId/select`.
+- Scene video: `POST /ads/scenes/:sceneId/video`.
+- Final merge: `POST /ads/projects/:projectId/final-video/assemble`.
 
-```js
-export default tseslint.config([
-  globalIgnores(["dist"]),
-  {
-    files: ["**/*.{ts,tsx}"],
-    extends: [
-      // Other configs...
+`FinalVideoPanel` only permits merge when every scene has a completed Scene Video and no scene video task is running. Regenerating a scene video clears previously merged output.
 
-      // Remove tseslint.configs.recommended and replace with this
-      ...tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      ...tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      ...tseslint.configs.stylisticTypeChecked,
+## Commands
 
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ["./tsconfig.node.json", "./tsconfig.app.json"],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
-
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
-
-```js
-// eslint.config.js
-import reactDom from "eslint-plugin-react-dom"
-import reactX from "eslint-plugin-react-x"
-
-export default tseslint.config([
-  globalIgnores(["dist"]),
-  {
-    files: ["**/*.{ts,tsx}"],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs["recommended-typescript"],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ["./tsconfig.node.json", "./tsconfig.app.json"],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+npm run dev
+npm run build
+npm run lint
 ```

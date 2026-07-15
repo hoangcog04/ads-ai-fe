@@ -1,24 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react"
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { useNavigate, useParams } from "react-router-dom"
-import {
-  Camera,
-  CheckCircle2,
-  FileJson,
-  Film,
-  ImageIcon,
-  Loader2,
-  Plus,
-  RefreshCw,
-  Save,
-  Sparkles,
-  Upload,
-  Video,
-} from "lucide-react"
-import { Button } from "@/components/ui/button"
 import { ROUTES } from "@/constants"
 import {
   addProductReference,
+  assembleVideo,
   createAdProject,
   generateAsset,
   generateKeyframe,
@@ -36,7 +20,25 @@ import {
   updateReferenceAsset,
   updateScene,
   updateSceneVideoPrompt,
+  uploadProductReferences,
 } from "@/services/ads"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import {
+  Camera,
+  CheckCircle2,
+  FileJson,
+  Film,
+  ImageIcon,
+  Loader2,
+  Plus,
+  RefreshCw,
+  Save,
+  Sparkles,
+  Upload,
+  Video,
+} from "lucide-react"
+import { useNavigate, useParams } from "react-router-dom"
+
 import type {
   AdActingBeat,
   AdAsset,
@@ -47,6 +49,7 @@ import type {
   AdScene,
   AdVoiceLine,
 } from "@/types/ads"
+import { Button } from "@/components/ui/button"
 
 const PRODUCT_KIND_OPTIONS = [
   "app_screen",
@@ -111,7 +114,7 @@ function inferProductKind(fileName: string) {
 }
 
 function buildProductContext(
-  refs: Array<{ name?: string; visualDescription?: string }>,
+  refs: Array<{ name?: string; visualDescription?: string }>
 ) {
   return refs
     .map((ref, index) => {
@@ -130,8 +133,7 @@ function splitDurationRange(value: string) {
 function AdsVideoPage() {
   const { projectId } = useParams<{ projectId?: string }>()
   const navigate = useNavigate()
-  const [workspaceStage, setWorkspaceStage] =
-    useState<WorkspaceStage>("plan")
+  const [workspaceStage, setWorkspaceStage] = useState<WorkspaceStage>("plan")
   const queryClient = useQueryClient()
 
   const projectsQuery = useQuery({
@@ -158,7 +160,9 @@ function AdsVideoPage() {
 
   const refreshProject = () => {
     if (projectId) {
-      void queryClient.invalidateQueries({ queryKey: ["ads-project", projectId] })
+      void queryClient.invalidateQueries({
+        queryKey: ["ads-project", projectId],
+      })
       void queryClient.invalidateQueries({ queryKey: ["ads-projects"] })
     }
   }
@@ -192,6 +196,11 @@ function AdsVideoPage() {
     onSuccess: refreshProject,
   })
 
+  const productRefUploadMutation = useMutation({
+    mutationFn: uploadProductReferences,
+    onSuccess: refreshProject,
+  })
+
   const legacyKeyframeMutation = useMutation({
     mutationFn: generateKeyframe,
     onSuccess: refreshProject,
@@ -199,6 +208,11 @@ function AdsVideoPage() {
 
   const videoMutation = useMutation({
     mutationFn: generateVideo,
+    onSuccess: refreshProject,
+  })
+
+  const assembleVideoMutation = useMutation({
+    mutationFn: assembleVideo,
     onSuccess: refreshProject,
   })
 
@@ -224,8 +238,12 @@ function AdsVideoPage() {
       setWorkspaceStage("references")
       return
     }
-    const nextCharacter = project.assets.find((asset) => asset.type === "CHARACTER")
-    const nextLocation = project.assets.find((asset) => asset.type === "LOCATION")
+    const nextCharacter = project.assets.find(
+      (asset) => asset.type === "CHARACTER"
+    )
+    const nextLocation = project.assets.find(
+      (asset) => asset.type === "LOCATION"
+    )
     if (
       workspaceStage === "references" &&
       nextCharacter?.imageUrl &&
@@ -266,7 +284,11 @@ function AdsVideoPage() {
           ) : (
             <div className="grid gap-3">
               <p className="font-medium text-red-700">Project not found.</p>
-              <Button className="w-fit" variant="outline" onClick={resetProject}>
+              <Button
+                className="w-fit"
+                variant="outline"
+                onClick={resetProject}
+              >
                 Back to projects
               </Button>
             </div>
@@ -279,7 +301,9 @@ function AdsVideoPage() {
   const productRefs = project.assets.filter((asset) => asset.type === "PRODUCT")
   const character = project.assets.find((asset) => asset.type === "CHARACTER")
   const location = project.assets.find((asset) => asset.type === "LOCATION")
-  const isPlanRunning = isRunning(latestTaskByTarget.get(`AdProject:${project.id}`))
+  const isPlanRunning = isRunning(
+    latestTaskByTarget.get(`AdProject:${project.id}`)
+  )
   const hasPlan = project.scenes.length > 0
   const hasDownstream = hasPlan || !!character || !!location
   const hasReadyReferences = !!character?.imageUrl && !!location?.imageUrl
@@ -296,7 +320,9 @@ function AdsVideoPage() {
       <div className="mx-auto flex max-w-7xl flex-col gap-4 px-4 py-4">
         <header className="flex flex-wrap items-center justify-between gap-3 border-b border-zinc-200 pb-3">
           <div>
-            <h1 className="text-xl font-semibold">{project.title || "Ads video"}</h1>
+            <h1 className="text-xl font-semibold">
+              {project.title || "Ads video"}
+            </h1>
             <div className="mt-1 flex flex-wrap gap-2 text-xs text-zinc-500">
               <span>{project.aspectRatio}</span>
               <span>voice: {project.voiceLanguage}</span>
@@ -314,7 +340,11 @@ function AdsVideoPage() {
                 }
               }}
             >
-              {isPlanRunning ? <Loader2 className="animate-spin" /> : <Sparkles />}
+              {isPlanRunning ? (
+                <Loader2 className="animate-spin" />
+              ) : (
+                <Sparkles />
+              )}
               Generate Plan
             </Button>
             <Button variant="outline" onClick={resetProject}>
@@ -335,6 +365,11 @@ function AdsVideoPage() {
             <ProductReferencesPanel
               projectId={project.id}
               assets={productRefs}
+              task={latestTaskByTarget.get(
+                `AdProjectProductRefs:${project.id}`
+              )}
+              isSubmitting={productRefUploadMutation.isPending}
+              onUpload={() => productRefUploadMutation.mutate(project.id)}
               onSaved={(updated) =>
                 queryClient.setQueryData(["ads-project", updated.id], updated)
               }
@@ -342,7 +377,11 @@ function AdsVideoPage() {
             <ReferenceCard
               label="Character"
               asset={character}
-              task={character ? latestTaskByTarget.get(`AdAsset:${character.id}`) : undefined}
+              task={
+                character
+                  ? latestTaskByTarget.get(`AdAsset:${character.id}`)
+                  : undefined
+              }
               isSubmitting={assetMutation.isPending}
               onGenerate={(assetId) => assetMutation.mutate(assetId)}
               onSaved={(updated) =>
@@ -352,7 +391,11 @@ function AdsVideoPage() {
             <ReferenceCard
               label="Location"
               asset={location}
-              task={location ? latestTaskByTarget.get(`AdAsset:${location.id}`) : undefined}
+              task={
+                location
+                  ? latestTaskByTarget.get(`AdAsset:${location.id}`)
+                  : undefined
+              }
               isSubmitting={assetMutation.isPending}
               onGenerate={(assetId) => assetMutation.mutate(assetId)}
               onSaved={(updated) =>
@@ -382,7 +425,8 @@ function AdsVideoPage() {
                 latestTaskByTarget={latestTaskByTarget}
               />
             )}
-            {(workspaceStage === "keyframes" || workspaceStage === "videos") && (
+            {(workspaceStage === "keyframes" ||
+              workspaceStage === "videos") && (
               <SceneList
                 project={project}
                 latestTaskByTarget={latestTaskByTarget}
@@ -396,6 +440,8 @@ function AdsVideoPage() {
                   legacyKeyframeMutation.mutate(sceneId)
                 }
                 onGenerateVideo={(sceneId) => videoMutation.mutate(sceneId)}
+                onAssembleVideo={() => assembleVideoMutation.mutate(project.id)}
+                isAssemblingVideo={assembleVideoMutation.isPending}
                 onRefresh={refreshProject}
               />
             )}
@@ -428,7 +474,9 @@ function StageTabs({
   const stageHint: Record<WorkspaceStage, string> = {
     plan: sceneCount ? `${sceneCount} scenes` : "create or import plan",
     references: hasReadyReferences ? "refs ready" : "generate char/location",
-    keyframes: selectedKeyframes ? `${selectedKeyframes} selected` : "select refs",
+    keyframes: selectedKeyframes
+      ? `${selectedKeyframes} selected`
+      : "select refs",
     videos: "Flow video",
   }
 
@@ -531,12 +579,20 @@ function ReferenceStageSummary({
         <ReferenceReadinessRow
           label="Character"
           asset={character}
-          task={character ? latestTaskByTarget.get(`AdAsset:${character.id}`) : undefined}
+          task={
+            character
+              ? latestTaskByTarget.get(`AdAsset:${character.id}`)
+              : undefined
+          }
         />
         <ReferenceReadinessRow
           label="Location"
           asset={location}
-          task={location ? latestTaskByTarget.get(`AdAsset:${location.id}`) : undefined}
+          task={
+            location
+              ? latestTaskByTarget.get(`AdAsset:${location.id}`)
+              : undefined
+          }
         />
       </div>
       <p className="text-xs leading-5 text-zinc-500">
@@ -569,7 +625,9 @@ function ReferenceReadinessRow({
         {task && <TaskBadge task={task} />}
         <span
           className={`rounded-md px-2 py-1 text-xs font-medium ${
-            ready ? "bg-emerald-50 text-emerald-700" : "bg-zinc-100 text-zinc-600"
+            ready
+              ? "bg-emerald-50 text-emerald-700"
+              : "bg-zinc-100 text-zinc-600"
           }`}
         >
           {ready ? "Ready" : "Pending"}
@@ -699,7 +757,9 @@ function BriefPanel({
 
   useEffect(() => {
     return () => {
-      productRefsRef.current.forEach((ref) => URL.revokeObjectURL(ref.previewUrl))
+      productRefsRef.current.forEach((ref) =>
+        URL.revokeObjectURL(ref.previewUrl)
+      )
     }
   }, [])
 
@@ -712,18 +772,18 @@ function BriefPanel({
         name: sanitizeProductRefName(file.name, index),
         kind: inferProductKind(file.name),
         visualDescription: "",
-      })),
+      }))
     )
   }
 
   const updateProductRef = (
     index: number,
-    patch: Partial<Omit<ProductImageDraft, "file" | "previewUrl">>,
+    patch: Partial<Omit<ProductImageDraft, "file" | "previewUrl">>
   ) => {
     setProductRefs((prev) =>
       prev.map((ref, refIndex) =>
-        refIndex === index ? { ...ref, ...patch } : ref,
-      ),
+        refIndex === index ? { ...ref, ...patch } : ref
+      )
     )
   }
 
@@ -909,7 +969,10 @@ function BriefPanel({
         <span className="font-medium">Enable overlay text</span>
       </label>
       {error && <p className="text-sm text-red-600">{error}</p>}
-      <Button className="w-fit" disabled={isSubmitting || !brief || productRefs.length === 0}>
+      <Button
+        className="w-fit"
+        disabled={isSubmitting || !brief || productRefs.length === 0}
+      >
         {isSubmitting ? <Loader2 className="animate-spin" /> : <Upload />}
         Create Project
       </Button>
@@ -920,10 +983,16 @@ function BriefPanel({
 function ProductReferencesPanel({
   projectId,
   assets,
+  task,
+  isSubmitting,
+  onUpload,
   onSaved,
 }: {
   projectId: string
   assets: AdAsset[]
+  task?: AdGenerationTask
+  isSubmitting: boolean
+  onUpload: () => void
   onSaved: (project: AdProject) => void
 }) {
   const [newFile, setNewFile] = useState<File | null>(null)
@@ -948,13 +1017,31 @@ function ProductReferencesPanel({
       onSaved(updated)
     },
   })
+  const uploadRunning = isRunning(task)
 
   return (
     <section className="rounded-lg border border-zinc-200 bg-white p-3 shadow-sm">
-      <div className="mb-3 flex items-center gap-2 text-sm font-semibold">
-        <ImageIcon className="size-4" />
-        Product References
+      <div className="mb-3 flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2 text-sm font-semibold">
+          <ImageIcon className="size-4" />
+          Product References
+        </div>
+        {task && <TaskBadge task={task} />}
       </div>
+      <Button
+        className="mb-3 w-full"
+        size="sm"
+        variant="outline"
+        disabled={assets.length === 0 || uploadRunning || isSubmitting}
+        onClick={onUpload}
+      >
+        {uploadRunning || isSubmitting ? (
+          <Loader2 className="animate-spin" />
+        ) : (
+          <Upload />
+        )}
+        Upload product refs to Flow
+      </Button>
       <div className="grid gap-3">
         {assets.map((asset) => (
           <ProductReferenceCard
@@ -1006,7 +1093,11 @@ function ProductReferencesPanel({
           disabled={!newFile || addMutation.isPending}
           onClick={() => addMutation.mutate()}
         >
-          {addMutation.isPending ? <Loader2 className="animate-spin" /> : <Plus />}
+          {addMutation.isPending ? (
+            <Loader2 className="animate-spin" />
+          ) : (
+            <Plus />
+          )}
           Add Reference
         </Button>
       </div>
@@ -1077,9 +1168,7 @@ function ProductReferenceCard({
       <TextareaField
         label="Lock prompt"
         value={draft.lockPrompt}
-        onChange={(lockPrompt) =>
-          setDraft((prev) => ({ ...prev, lockPrompt }))
-        }
+        onChange={(lockPrompt) => setDraft((prev) => ({ ...prev, lockPrompt }))}
       />
       <TextareaField
         label="Use when"
@@ -1092,7 +1181,11 @@ function ProductReferenceCard({
         disabled={updateMutation.isPending}
         onClick={() => updateMutation.mutate()}
       >
-        {updateMutation.isPending ? <Loader2 className="animate-spin" /> : <Save />}
+        {updateMutation.isPending ? (
+          <Loader2 className="animate-spin" />
+        ) : (
+          <Save />
+        )}
         Save Ref
       </Button>
     </div>
@@ -1119,7 +1212,9 @@ function ReferenceCard({
   const descriptionLabel = lowerLabel.includes("location")
     ? "Location description"
     : "Character description"
-  const lockLabel = lowerLabel.includes("location") ? "Location lock" : "Identity lock"
+  const lockLabel = lowerLabel.includes("location")
+    ? "Location lock"
+    : "Identity lock"
   const [draft, setDraft] = useState({
     name: asset?.name || "",
     description: asset?.description || "",
@@ -1236,7 +1331,9 @@ function ProjectBrief({ project }: { project: AdProject }) {
       <div className="grid gap-3 md:grid-cols-2">
         <div>
           <h2 className="text-sm font-semibold">Brief</h2>
-          <p className="mt-1 text-sm leading-5 text-zinc-700">{project.brief}</p>
+          <p className="mt-1 text-sm leading-5 text-zinc-700">
+            {project.brief}
+          </p>
         </div>
         <div>
           <h2 className="text-sm font-semibold">Product context</h2>
@@ -1282,6 +1379,8 @@ function SceneList({
   onRewriteScene,
   onGenerateLegacyKeyframe,
   onGenerateVideo,
+  onAssembleVideo,
+  isAssemblingVideo,
   onRefresh,
 }: {
   project: AdProject
@@ -1290,6 +1389,8 @@ function SceneList({
   onRewriteScene: (sceneId: string, instruction: string) => void
   onGenerateLegacyKeyframe: (sceneId: string) => void
   onGenerateVideo: (sceneId: string) => void
+  onAssembleVideo: () => void
+  isAssemblingVideo: boolean
   onRefresh: () => void
 }) {
   if (project.scenes.length === 0) {
@@ -1302,6 +1403,12 @@ function SceneList({
 
   return (
     <section className="grid gap-4">
+      <FinalVideoPanel
+        project={project}
+        task={latestTaskByTarget.get(`AdProjectFinalVideo:${project.id}`)}
+        isSubmitting={isAssemblingVideo}
+        onAssemble={onAssembleVideo}
+      />
       {project.scenes.map((scene) => (
         <SceneCard
           key={`${scene.id}-${scene.updatedAt}`}
@@ -1319,6 +1426,61 @@ function SceneList({
           onRefresh={onRefresh}
         />
       ))}
+    </section>
+  )
+}
+
+function FinalVideoPanel({
+  project,
+  task,
+  isSubmitting,
+  onAssemble,
+}: {
+  project: AdProject
+  task?: AdGenerationTask
+  isSubmitting: boolean
+  onAssemble: () => void
+}) {
+  const allSceneVideosReady =
+    project.scenes.length > 0 &&
+    project.scenes.every((scene) => !!scene.videoUrl && !scene.videoError)
+  const sceneVideoStillRunning = project.tasks.some(
+    (task) => task.type === "AD_SCENE_VIDEO" && isRunning(task)
+  )
+  if (!allSceneVideosReady || sceneVideoStillRunning) return null
+
+  const running = isSubmitting || isRunning(task)
+  return (
+    <section className="grid gap-3 rounded-lg border border-zinc-200 bg-white p-4 shadow-sm">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <h2 className="text-sm font-semibold">Final ad video</h2>
+          <p className="text-xs text-zinc-500">
+            Merge {project.scenes.length} scene videos in scene order.
+          </p>
+        </div>
+        {task && <TaskBadge task={task} />}
+      </div>
+      <Button className="w-fit" disabled={running} onClick={onAssemble}>
+        {running ? <Loader2 className="animate-spin" /> : <Film />}
+        Merge {project.scenes.length} videos
+      </Button>
+      {project.finalVideoUrl && (
+        <div className="grid gap-2">
+          <video
+            src={project.finalVideoUrl}
+            controls
+            className="aspect-[9/16] w-full max-w-sm rounded-md bg-black"
+          />
+          <a
+            className="w-fit rounded-md border border-zinc-300 px-3 py-2 text-sm font-medium text-zinc-900 hover:bg-zinc-50"
+            href={project.finalVideoUrl}
+            download
+          >
+            Download merged video
+          </a>
+        </div>
+      )}
     </section>
   )
 }
@@ -1381,7 +1543,8 @@ function SceneCard({
     (slot) => !!slot.selectedCandidate
   ).length
   const canGenerateVideo =
-    keyframePromptSlots.length > 0 && selectedCount === keyframePromptSlots.length
+    keyframePromptSlots.length > 0 &&
+    selectedCount === keyframePromptSlots.length
 
   return (
     <article className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm">
@@ -1427,7 +1590,10 @@ function SceneCard({
               className="min-h-20 rounded-md border border-zinc-300 p-2 text-sm leading-5 text-zinc-900"
               value={draft.visualAction}
               onChange={(event) =>
-                setDraft((prev) => ({ ...prev, visualAction: event.target.value }))
+                setDraft((prev) => ({
+                  ...prev,
+                  visualAction: event.target.value,
+                }))
               }
             />
           </label>
@@ -1486,7 +1652,9 @@ function SceneCard({
           )}
           <VoiceLinesEditor
             voiceLines={draft.voiceLines}
-            onChange={(voiceLines) => setDraft((prev) => ({ ...prev, voiceLines }))}
+            onChange={(voiceLines) =>
+              setDraft((prev) => ({ ...prev, voiceLines }))
+            }
           />
           <ActingBeatsEditor
             actingBeats={draft.actingBeats}
@@ -1700,7 +1868,9 @@ function ActingBeatsEditor({
   return (
     <div className="grid gap-2 rounded-md border border-zinc-200 p-2">
       <div className="flex items-center justify-between gap-2">
-        <span className="text-xs font-semibold text-zinc-600">Acting beats</span>
+        <span className="text-xs font-semibold text-zinc-600">
+          Acting beats
+        </span>
         <Button
           size="sm"
           variant="outline"
@@ -1967,7 +2137,11 @@ function KeyframeSlotCard({
           disabled={updateMutation.isPending}
           onClick={() => updateMutation.mutate()}
         >
-          {updateMutation.isPending ? <Loader2 className="animate-spin" /> : <Save />}
+          {updateMutation.isPending ? (
+            <Loader2 className="animate-spin" />
+          ) : (
+            <Save />
+          )}
           Save Slot
         </Button>
         <Button

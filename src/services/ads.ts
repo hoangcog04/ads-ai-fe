@@ -83,6 +83,12 @@ export async function generateAsset(assetId: string) {
   ) as unknown as AdGenerationTask
 }
 
+export async function uploadProductReferences(projectId: string) {
+  return httpRequest.post(
+    `/ads/projects/${projectId}/product-references/upload`
+  ) as unknown as AdGenerationTask
+}
+
 export async function updateScene(
   sceneId: string,
   payload: Record<string, unknown>
@@ -203,6 +209,12 @@ export async function selectKeyframeSlotCandidate(
 export async function generateVideo(sceneId: string) {
   return httpRequest.post(
     `/ads/scenes/${sceneId}/video`
+  ) as unknown as AdGenerationTask
+}
+
+export async function assembleVideo(projectId: string) {
+  return httpRequest.post(
+    `/ads/projects/${projectId}/final-video/assemble`
   ) as unknown as AdGenerationTask
 }
 
