@@ -73,16 +73,13 @@ export type AdScene = {
   narrativePurpose?: string | null
   title: string
   durationSec: number
-  sceneGoal?: string | null
   visualAction: string
   productMoment?: string | null
   characterAction?: string | null
-  locationUse?: string | null
   cameraShot?: string | null
   cameraMovement?: string | null
   composition?: string | null
   cameraAlternatives?: string[] | null
-  voiceLine?: string | null
   voiceLines?: AdVoiceLine[] | null
   actingBeats?: AdActingBeat[] | null
   ambientAudio?: string | null
@@ -90,8 +87,8 @@ export type AdScene = {
   keyframePrompt?: string | null
   keyframePromptStale: boolean
   keyframePromptSlots: AdKeyframePromptSlot[]
-  finalVideoPrompt?: string | null
-  finalVideoPromptStale: boolean
+  videoPrompt?: string | null
+  videoPromptStale: boolean
   negativeRules?: string[] | null
   keyframeImageUrl?: string | null
   keyframeWarning?: string | null
@@ -185,7 +182,6 @@ export type PromptExportProductReference = {
   visualDescription?: string
   lockPrompt?: string
   useWhen?: string
-  isPrimary?: boolean
 }
 
 export type RenderPlanPromptPayload = {

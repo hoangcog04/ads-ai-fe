@@ -101,21 +101,15 @@ export async function updateScene(
 
 export async function updateSceneVideoPrompt(
   sceneId: string,
-  finalVideoPrompt: string
+  videoPrompt: string
 ) {
   return httpRequest.patch(`/ads/scenes/${sceneId}/video-prompt`, {
-    finalVideoPrompt,
+    videoPrompt,
   }) as unknown as AdProject
 }
 
-export async function regenerateSceneVideoPrompt(sceneId: string) {
-  return httpRequest.post(
-    `/ads/scenes/${sceneId}/video-prompt/regenerate`
-  ) as unknown as AdGenerationTask
-}
-
-export async function rewriteScene(sceneId: string, instruction: string) {
-  return httpRequest.post(`/ads/scenes/${sceneId}/rewrite`, {
+export async function replanScene(sceneId: string, instruction: string) {
+  return httpRequest.post(`/ads/scenes/${sceneId}/replan`, {
     instruction,
   }) as unknown as AdGenerationTask
 }

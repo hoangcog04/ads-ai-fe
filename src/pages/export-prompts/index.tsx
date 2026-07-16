@@ -70,7 +70,6 @@ function ExportPromptsPage() {
         name: ref.name || `i_product_${index + 1}`,
         kind: ref.kind || "other",
         visualDescription: ref.visualDescription,
-        isPrimary: index === 0,
       })),
     [productRefs],
   )
