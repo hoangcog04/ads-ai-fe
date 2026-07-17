@@ -113,6 +113,15 @@ export type AdGenerationTask = {
   createdAt: string
 }
 
+export type AdFlowMedia = {
+  id: string
+  assetId?: string | null
+  kind: string
+  status: string
+  flowAssetName: string
+  localStorageKey?: string | null
+}
+
 export type AdProject = {
   id: string
   title?: string | null
@@ -133,6 +142,7 @@ export type AdProject = {
   assets: AdAsset[]
   scenes: AdScene[]
   tasks: AdGenerationTask[]
+  flowMedia: AdFlowMedia[]
 }
 
 export type AdProjectListItem = {
@@ -173,6 +183,20 @@ export type CreateAdProjectPayload = {
     lockPrompt?: string
     useWhen?: string
   }>
+}
+
+export type UpdateAdProjectPayload = {
+  title?: string
+  brief?: string
+  productContext?: string
+  scriptTimeline?: string
+  characterBrief?: string
+  locationBrief?: string
+  aspectRatio?: string
+  durationRangeMinSec?: number | null
+  durationRangeMaxSec?: number | null
+  voiceLanguage?: string
+  overlayEnabled?: boolean
 }
 
 export type PromptExportProductReference = {

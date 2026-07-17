@@ -7,6 +7,7 @@ import type {
   RenderManualGuideResponse,
   RenderPlanPromptPayload,
   RenderPlanPromptResponse,
+  UpdateAdProjectPayload,
 } from "@/types/ads"
 import httpRequest from "@/lib/axios"
 
@@ -65,6 +66,16 @@ export async function getAdProject(projectId: string) {
   return httpRequest.get(`/ads/projects/${projectId}`) as unknown as AdProject
 }
 
+export async function updateAdProject(
+  projectId: string,
+  payload: UpdateAdProjectPayload
+) {
+  return httpRequest.patch(
+    `/ads/projects/${projectId}`,
+    payload
+  ) as unknown as AdProject
+}
+
 export async function runAdPlan(projectId: string) {
   return httpRequest.post(
     `/ads/projects/${projectId}/plan`
@@ -81,6 +92,17 @@ export async function generateAsset(assetId: string) {
   return httpRequest.post(
     `/ads/assets/${assetId}/generate`
   ) as unknown as AdGenerationTask
+}
+
+export async function uploadReferenceAssetImage(
+  assetId: string,
+  referenceImage: File
+) {
+  const formData = new FormData()
+  formData.append("referenceImage", referenceImage)
+  return httpRequest.post(`/ads/assets/${assetId}/reference-image`, formData, {
+    headers: { "Content-Type": "multipart/form-data" },
+  }) as unknown as AdProject
 }
 
 export async function uploadProductReferences(projectId: string) {

@@ -15,16 +15,19 @@ import {
   runAdPlan,
   selectKeyframeSlotCandidate,
   updateKeyframePromptSlot,
+  updateAdProject,
   updateProductReference,
   updateReferenceAsset,
   updateScene,
   updateSceneVideoPrompt,
   uploadProductReferences,
+  uploadReferenceAssetImage,
 } from "@/services/ads"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import {
   Camera,
   CheckCircle2,
+  Copy,
   FileJson,
   Film,
   ImageIcon,
@@ -47,6 +50,7 @@ import type {
   AdProjectListItem,
   AdScene,
   AdVoiceLine,
+  UpdateAdProjectPayload,
 } from "@/types/ads"
 import { Button } from "@/components/ui/button"
 
@@ -182,6 +186,20 @@ function AdsVideoPage() {
     onSuccess: refreshProject,
   })
 
+  const projectInputMutation = useMutation({
+    mutationFn: ({
+      id,
+      payload,
+    }: {
+      id: string
+      payload: UpdateAdProjectPayload
+    }) => updateAdProject(id, payload),
+    onSuccess: (updated) => {
+      queryClient.setQueryData(["ads-project", updated.id], updated)
+      void queryClient.invalidateQueries({ queryKey: ["ads-projects"] })
+    },
+  })
+
   const importPlanMutation = useMutation({
     mutationFn: ({ id, rawPlan }: { id: string; rawPlan: string }) =>
       importAdPlanJson(id, rawPlan),
@@ -194,6 +212,14 @@ function AdsVideoPage() {
   const assetMutation = useMutation({
     mutationFn: generateAsset,
     onSuccess: refreshProject,
+  })
+
+  const referenceImageUploadMutation = useMutation({
+    mutationFn: ({ assetId, file }: { assetId: string; file: File }) =>
+      uploadReferenceAssetImage(assetId, file),
+    onSuccess: (updated) => {
+      queryClient.setQueryData(["ads-project", updated.id], updated)
+    },
   })
 
   const productRefUploadMutation = useMutation({
@@ -234,29 +260,45 @@ function AdsVideoPage() {
 
   useEffect(() => {
     if (!project) return
-    if (workspaceStage === "plan" && project.scenes.length > 0) {
-      setWorkspaceStage("references")
-      return
-    }
     const nextCharacter = project.assets.find(
       (asset) => asset.type === "CHARACTER"
     )
     const nextLocation = project.assets.find(
       (asset) => asset.type === "LOCATION"
     )
+    const referenceAssets = [
+      ...project.assets.filter((asset) => asset.type === "PRODUCT"),
+      ...(nextCharacter ? [nextCharacter] : []),
+      ...(nextLocation ? [nextLocation] : []),
+    ]
+    const flowKindFor = (asset: AdAsset) =>
+      asset.type === "CHARACTER"
+        ? "CHARACTER_REF"
+        : asset.type === "LOCATION"
+          ? "LOCATION_REF"
+          : "PRODUCT_UPLOAD"
+    const referencesUploaded =
+      referenceAssets.length > 2 &&
+      referenceAssets.every((asset) =>
+        project.flowMedia.some(
+          (media) =>
+            media.assetId === asset.id &&
+            media.kind === flowKindFor(asset) &&
+            (media.status === "UPLOADED" || media.status === "DOWNLOADED")
+        )
+      )
     if (
-      workspaceStage === "references" &&
-      nextCharacter?.imageUrl &&
-      nextLocation?.imageUrl
+      (workspaceStage === "keyframes" || workspaceStage === "videos") &&
+      !referencesUploaded
     ) {
-      setWorkspaceStage("keyframes")
+      setWorkspaceStage("references")
     }
   }, [project, workspaceStage])
 
   if (!projectId) {
     return (
       <main className="min-h-screen bg-zinc-50 px-4 py-6 text-zinc-950">
-        <div className="mx-auto grid max-w-7xl gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
+        <div className="mx-auto grid max-w-7xl items-start gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
           <BriefPanel
             isSubmitting={createMutation.isPending}
             error={readMutationError(createMutation.error)}
@@ -307,6 +349,34 @@ function AdsVideoPage() {
   const hasPlan = project.scenes.length > 0
   const hasDownstream = hasPlan || !!character || !!location
   const hasReadyReferences = !!character?.imageUrl && !!location?.imageUrl
+  const referenceAssets = [
+    ...productRefs,
+    ...(character ? [character] : []),
+    ...(location ? [location] : []),
+  ]
+  const flowKindFor = (asset: AdAsset) =>
+    asset.type === "CHARACTER"
+      ? "CHARACTER_REF"
+      : asset.type === "LOCATION"
+        ? "LOCATION_REF"
+        : "PRODUCT_UPLOAD"
+  const hasUploadedReferenceSet =
+    hasReadyReferences &&
+    productRefs.length > 0 &&
+    referenceAssets.every((asset) =>
+      project.flowMedia.some(
+        (media) =>
+          media.assetId === asset.id &&
+          media.kind === flowKindFor(asset) &&
+          (media.status === "UPLOADED" || media.status === "DOWNLOADED")
+      )
+    )
+  const referencesBusy =
+    isRunning(latestTaskByTarget.get(`AdProjectProductRefs:${project.id}`)) ||
+    [character, location].some((asset) =>
+      asset ? isRunning(latestTaskByTarget.get(`AdAsset:${asset.id}`)) : false
+    )
+  const canAdvanceToKeyframes = hasUploadedReferenceSet && !referencesBusy
 
   const confirmRebuildPlan = () => {
     if (!hasDownstream) return true
@@ -332,20 +402,11 @@ function AdsVideoPage() {
           </div>
           <div className="flex items-center gap-2">
             <Button
-              disabled={isPlanRunning || planMutation.isPending}
-              onClick={() => {
-                if (confirmRebuildPlan()) {
-                  planMutation.mutate(project.id)
-                  setWorkspaceStage("plan")
-                }
-              }}
+              variant={workspaceStage === "plan" ? "secondary" : "default"}
+              onClick={() => setWorkspaceStage("plan")}
             >
-              {isPlanRunning ? (
-                <Loader2 className="animate-spin" />
-              ) : (
-                <Sparkles />
-              )}
-              Generate Plan
+              <Sparkles />
+              {hasPlan ? "Edit / Replan" : "Plan"}
             </Button>
             <Button variant="outline" onClick={resetProject}>
               Projects
@@ -357,22 +418,58 @@ function AdsVideoPage() {
           stage={workspaceStage}
           project={project}
           hasReadyReferences={hasReadyReferences}
+          hasUploadedReferences={hasUploadedReferenceSet}
           onChange={setWorkspaceStage}
         />
 
-        <ProjectBrief project={project} />
+        {workspaceStage !== "plan" && <ProjectBrief project={project} />}
 
         {workspaceStage === "plan" && (
-          <ImportPlanPanel
-            project={project}
-            isSubmitting={importPlanMutation.isPending}
-            error={readMutationError(importPlanMutation.error)}
-            onImport={(rawPlan) => {
-              if (confirmRebuildPlan()) {
-                importPlanMutation.mutate({ id: project.id, rawPlan })
+          <section className="grid items-start gap-4 xl:grid-cols-[minmax(0,1.35fr)_minmax(340px,0.65fr)]">
+            <div className="grid gap-4">
+              <ProjectPlanEditor
+                project={project}
+                isSaving={projectInputMutation.isPending}
+                isPlanning={isPlanRunning || planMutation.isPending}
+                error={readMutationError(projectInputMutation.error)}
+                onSave={(payload, shouldReplan) => {
+                  if (shouldReplan && !confirmRebuildPlan()) return
+                  projectInputMutation.mutate(
+                    { id: project.id, payload },
+                    {
+                      onSuccess: () => {
+                        if (shouldReplan) planMutation.mutate(project.id)
+                      },
+                    }
+                  )
+                }}
+              />
+              <ImportPlanPanel
+                project={project}
+                isSubmitting={importPlanMutation.isPending}
+                error={readMutationError(importPlanMutation.error)}
+                onImport={(rawPlan) => {
+                  if (confirmRebuildPlan()) {
+                    importPlanMutation.mutate({ id: project.id, rawPlan })
+                  }
+                }}
+              />
+            </div>
+            <ProductReferencesPanel
+              projectId={project.id}
+              assets={productRefs}
+              task={latestTaskByTarget.get(
+                `AdProjectProductRefs:${project.id}`
+              )}
+              isSubmitting={productRefUploadMutation.isPending}
+              canUpload={false}
+              showFlowUpload={false}
+              onUpload={() => productRefUploadMutation.mutate(project.id)}
+              onSaved={(updated) =>
+                queryClient.setQueryData(["ads-project", updated.id], updated)
               }
-            }}
-          />
+            />
+          </section>
         )}
 
         {workspaceStage === "references" && (
@@ -380,6 +477,7 @@ function AdsVideoPage() {
             <ReferenceStageSummary
               character={character}
               location={location}
+              hasUploadedReferences={hasUploadedReferenceSet}
               latestTaskByTarget={latestTaskByTarget}
             />
             <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1.35fr)_minmax(280px,1fr)_minmax(280px,1fr)]">
@@ -390,12 +488,10 @@ function AdsVideoPage() {
                   `AdProjectProductRefs:${project.id}`
                 )}
                 isSubmitting={productRefUploadMutation.isPending}
+                canUpload={hasReadyReferences && productRefs.length > 0}
                 onUpload={() => productRefUploadMutation.mutate(project.id)}
                 onSaved={(updated) =>
-                  queryClient.setQueryData([
-                    "ads-project",
-                    updated.id,
-                  ], updated)
+                  queryClient.setQueryData(["ads-project", updated.id], updated)
                 }
               />
               <ReferenceCard
@@ -407,12 +503,13 @@ function AdsVideoPage() {
                     : undefined
                 }
                 isSubmitting={assetMutation.isPending}
+                isUploadSubmitting={referenceImageUploadMutation.isPending}
                 onGenerate={(assetId) => assetMutation.mutate(assetId)}
+                onUpload={(assetId, file) =>
+                  referenceImageUploadMutation.mutate({ assetId, file })
+                }
                 onSaved={(updated) =>
-                  queryClient.setQueryData([
-                    "ads-project",
-                    updated.id,
-                  ], updated)
+                  queryClient.setQueryData(["ads-project", updated.id], updated)
                 }
               />
               <ReferenceCard
@@ -424,14 +521,26 @@ function AdsVideoPage() {
                     : undefined
                 }
                 isSubmitting={assetMutation.isPending}
+                isUploadSubmitting={referenceImageUploadMutation.isPending}
                 onGenerate={(assetId) => assetMutation.mutate(assetId)}
+                onUpload={(assetId, file) =>
+                  referenceImageUploadMutation.mutate({ assetId, file })
+                }
                 onSaved={(updated) =>
-                  queryClient.setQueryData([
-                    "ads-project",
-                    updated.id,
-                  ], updated)
+                  queryClient.setQueryData(["ads-project", updated.id], updated)
                 }
               />
+            </div>
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-zinc-200 bg-white p-3 shadow-sm">
+              <p className="text-sm text-zinc-600">
+                Upload complete reference set to Flow, then continue manually.
+              </p>
+              <Button
+                disabled={!canAdvanceToKeyframes}
+                onClick={() => setWorkspaceStage("keyframes")}
+              >
+                Next: Keyframes
+              </Button>
             </div>
           </section>
         )}
@@ -465,11 +574,13 @@ function StageTabs({
   stage,
   project,
   hasReadyReferences,
+  hasUploadedReferences,
   onChange,
 }: {
   stage: WorkspaceStage
   project: AdProject
   hasReadyReferences: boolean
+  hasUploadedReferences: boolean
   onChange: (stage: WorkspaceStage) => void
 }) {
   const sceneCount = project.scenes.length
@@ -482,17 +593,26 @@ function StageTabs({
   )
   const stageHint: Record<WorkspaceStage, string> = {
     plan: sceneCount ? `${sceneCount} scenes` : "create or import plan",
-    references: hasReadyReferences ? "refs ready" : "generate char/location",
+    references: hasUploadedReferences
+      ? "Flow refs uploaded"
+      : hasReadyReferences
+        ? "upload all refs to Flow"
+        : "generate or upload char/location",
     keyframes: selectedKeyframes
       ? `${selectedKeyframes} selected`
-      : "select refs",
-    videos: "Flow video",
+      : hasUploadedReferences
+        ? "select refs"
+        : "upload refs first",
+    videos: hasUploadedReferences ? "Flow video" : "upload refs first",
   }
 
   return (
     <nav className="grid gap-2 rounded-lg border border-zinc-200 bg-white p-2 shadow-sm sm:grid-cols-4">
       {WORKSPACE_STAGES.map((item) => {
         const active = item.id === stage
+        const disabled =
+          (item.id === "keyframes" || item.id === "videos") &&
+          !hasUploadedReferences
         return (
           <button
             key={item.id}
@@ -500,7 +620,8 @@ function StageTabs({
               active
                 ? "border-zinc-900 bg-zinc-950 text-white"
                 : "border-zinc-200 bg-white text-zinc-700"
-            }`}
+            } ${disabled ? "cursor-not-allowed opacity-50" : ""}`}
+            disabled={disabled}
             onClick={() => onChange(item.id)}
           >
             <span className="text-sm font-semibold">{item.label}</span>
@@ -515,6 +636,222 @@ function StageTabs({
         )
       })}
     </nav>
+  )
+}
+
+function ProjectPlanEditor({
+  project,
+  isSaving,
+  isPlanning,
+  error,
+  onSave,
+}: {
+  project: AdProject
+  isSaving: boolean
+  isPlanning: boolean
+  error?: string | null
+  onSave: (payload: UpdateAdProjectPayload, shouldReplan: boolean) => void
+}) {
+  const [draft, setDraft] = useState(() => ({
+    title: project.title || "",
+    brief: project.brief || "",
+    productContext: project.productContext || "",
+    scriptTimeline: project.scriptTimeline || "",
+    characterBrief: project.characterBrief || "",
+    locationBrief: project.locationBrief || "",
+    aspectRatio: project.aspectRatio || "9:16",
+    durationRangeMinSec: project.durationRangeMinSec?.toString() || "",
+    durationRangeMaxSec: project.durationRangeMaxSec?.toString() || "",
+    voiceLanguage: project.voiceLanguage || "auto",
+    overlayEnabled: project.overlayEnabled,
+  }))
+  const setField = <K extends keyof typeof draft>(
+    key: K,
+    value: (typeof draft)[K]
+  ) => setDraft((current) => ({ ...current, [key]: value }))
+  const payload: UpdateAdProjectPayload = {
+    title: draft.title,
+    brief: draft.brief,
+    productContext: draft.productContext,
+    scriptTimeline: draft.scriptTimeline,
+    characterBrief: draft.characterBrief,
+    locationBrief: draft.locationBrief,
+    aspectRatio: draft.aspectRatio,
+    durationRangeMinSec: draft.durationRangeMinSec
+      ? Number(draft.durationRangeMinSec)
+      : null,
+    durationRangeMaxSec: draft.durationRangeMaxSec
+      ? Number(draft.durationRangeMaxSec)
+      : null,
+    voiceLanguage: draft.voiceLanguage,
+    overlayEnabled: draft.overlayEnabled,
+  }
+  const savedPayload: UpdateAdProjectPayload = {
+    title: project.title || "",
+    brief: project.brief || "",
+    productContext: project.productContext || "",
+    scriptTimeline: project.scriptTimeline || "",
+    characterBrief: project.characterBrief || "",
+    locationBrief: project.locationBrief || "",
+    aspectRatio: project.aspectRatio,
+    durationRangeMinSec: project.durationRangeMinSec ?? null,
+    durationRangeMaxSec: project.durationRangeMaxSec ?? null,
+    voiceLanguage: project.voiceLanguage,
+    overlayEnabled: project.overlayEnabled,
+  }
+  const dirty = JSON.stringify(payload) !== JSON.stringify(savedPayload)
+  const busy = isSaving || isPlanning
+  const invalidDuration =
+    payload.durationRangeMinSec != null &&
+    payload.durationRangeMaxSec != null &&
+    payload.durationRangeMinSec > payload.durationRangeMaxSec
+  const canSubmit = !!draft.brief.trim() && !invalidDuration && !busy
+
+  return (
+    <section className="grid gap-4 rounded-lg border border-zinc-200 bg-white p-4 shadow-sm">
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div>
+          <h2 className="text-sm font-semibold">Plan inputs</h2>
+          <p className="mt-1 text-xs text-zinc-500">
+            Save edits first. Replan reads these persisted values and keeps the
+            same Ads/Flow project.
+          </p>
+        </div>
+        {dirty && (
+          <span className="rounded-md bg-amber-50 px-2 py-1 text-xs font-medium text-amber-700">
+            Unsaved changes
+          </span>
+        )}
+      </div>
+
+      <TextField
+        label="Title"
+        value={draft.title}
+        onChange={(value) => setField("title", value)}
+      />
+      <label className="grid gap-1 text-sm">
+        <span className="font-medium">Brief</span>
+        <textarea
+          className="min-h-28 rounded-md border border-zinc-300 p-3 leading-5"
+          required
+          value={draft.brief}
+          onChange={(event) => setField("brief", event.target.value)}
+        />
+      </label>
+      <label className="grid gap-1 text-sm">
+        <span className="font-medium">Script / Timeline</span>
+        <textarea
+          className="min-h-32 rounded-md border border-zinc-300 p-3 leading-5"
+          value={draft.scriptTimeline}
+          onChange={(event) =>
+            setField("scriptTimeline", event.target.value)
+          }
+        />
+      </label>
+      <label className="grid gap-1 text-sm">
+        <span className="font-medium">Product context</span>
+        <textarea
+          className="min-h-24 rounded-md border border-zinc-300 p-3 leading-5"
+          value={draft.productContext}
+          onChange={(event) =>
+            setField("productContext", event.target.value)
+          }
+        />
+      </label>
+      <div className="grid gap-3 md:grid-cols-2">
+        <TextareaField
+          label="Character brief"
+          value={draft.characterBrief}
+          onChange={(value) => setField("characterBrief", value)}
+        />
+        <TextareaField
+          label="Location brief"
+          value={draft.locationBrief}
+          onChange={(value) => setField("locationBrief", value)}
+        />
+      </div>
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <label className="grid gap-1 text-sm">
+          <span className="font-medium">Ratio</span>
+          <select
+            className="h-10 rounded-md border border-zinc-300 px-3"
+            value={draft.aspectRatio}
+            onChange={(event) => setField("aspectRatio", event.target.value)}
+          >
+            <option value="9:16">9:16</option>
+            <option value="1:1">1:1</option>
+            <option value="16:9">16:9</option>
+          </select>
+        </label>
+        <TextField
+          label="Min duration (s)"
+          type="number"
+          value={draft.durationRangeMinSec}
+          onChange={(value) => setField("durationRangeMinSec", value)}
+        />
+        <TextField
+          label="Max duration (s)"
+          type="number"
+          value={draft.durationRangeMaxSec}
+          onChange={(value) => setField("durationRangeMaxSec", value)}
+        />
+        <label className="grid gap-1 text-sm">
+          <span className="font-medium">Voice language</span>
+          <select
+            className="h-10 rounded-md border border-zinc-300 px-3"
+            value={draft.voiceLanguage}
+            onChange={(event) =>
+              setField("voiceLanguage", event.target.value)
+            }
+          >
+            {VOICE_LANGUAGE_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+      <label className="flex w-fit items-center gap-2 text-sm">
+        <input
+          type="checkbox"
+          checked={draft.overlayEnabled}
+          onChange={(event) =>
+            setField("overlayEnabled", event.target.checked)
+          }
+        />
+        <span className="font-medium">Enable overlay text</span>
+      </label>
+      {invalidDuration && (
+        <p className="text-sm text-red-600">
+          Min duration must be less than or equal to max duration.
+        </p>
+      )}
+      {error && <p className="text-sm text-red-600">{error}</p>}
+      <div className="flex flex-wrap items-center gap-2">
+        <Button
+          type="button"
+          variant="outline"
+          disabled={!canSubmit || !dirty}
+          onClick={() => onSave(payload, false)}
+        >
+          {isSaving ? <Loader2 className="animate-spin" /> : <Save />}
+          Save Inputs
+        </Button>
+        <Button
+          type="button"
+          disabled={!canSubmit}
+          onClick={() => onSave(payload, true)}
+        >
+          {busy ? <Loader2 className="animate-spin" /> : <Sparkles />}
+          {project.scenes.length ? "Save & Replan" : "Save & Generate Plan"}
+        </Button>
+        <p className="text-xs text-zinc-500">
+          Replan replaces scenes, char/location specs, slots, and downstream
+          scene outputs. Product refs and Flow project remain.
+        </p>
+      </div>
+    </section>
   )
 }
 
@@ -572,10 +909,12 @@ function ImportPlanPanel({
 function ReferenceStageSummary({
   character,
   location,
+  hasUploadedReferences,
   latestTaskByTarget,
 }: {
   character?: AdAsset
   location?: AdAsset
+  hasUploadedReferences: boolean
   latestTaskByTarget: Map<string, AdGenerationTask>
 }) {
   return (
@@ -605,8 +944,9 @@ function ReferenceStageSummary({
         />
       </div>
       <p className="text-xs leading-5 text-zinc-500">
-        Generate both references from the left rail. When both are ready, the
-        workspace advances to keyframe slots automatically.
+        {hasUploadedReferences
+          ? "All product, character, and location references are in Flow."
+          : "Prepare character and location, then upload the complete reference set to Flow."}
       </p>
     </section>
   )
@@ -994,6 +1334,8 @@ function ProductReferencesPanel({
   assets,
   task,
   isSubmitting,
+  canUpload,
+  showFlowUpload = true,
   onUpload,
   onSaved,
 }: {
@@ -1001,6 +1343,8 @@ function ProductReferencesPanel({
   assets: AdAsset[]
   task?: AdGenerationTask
   isSubmitting: boolean
+  canUpload: boolean
+  showFlowUpload?: boolean
   onUpload: () => void
   onSaved: (project: AdProject) => void
 }) {
@@ -1037,25 +1381,27 @@ function ProductReferencesPanel({
         </div>
         {task && <TaskBadge task={task} />}
       </div>
-      <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-md bg-zinc-50 p-2">
-        <p className="text-xs text-zinc-500">
-          Save metadata first; upload only when Flow needs the current files.
-        </p>
-        <Button
-          className="w-fit"
-          size="sm"
-          variant="outline"
-          disabled={assets.length === 0 || uploadRunning || isSubmitting}
-          onClick={onUpload}
-        >
-          {uploadRunning || isSubmitting ? (
-            <Loader2 className="animate-spin" />
-          ) : (
-            <Upload />
-          )}
-          Upload product refs to Flow
-        </Button>
-      </div>
+      {showFlowUpload && (
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-md bg-zinc-50 p-2">
+          <p className="text-xs text-zinc-500">
+            Upload product, character, and location together when all are ready.
+          </p>
+          <Button
+            className="w-fit"
+            size="sm"
+            variant="outline"
+            disabled={!canUpload || uploadRunning || isSubmitting}
+            onClick={onUpload}
+          >
+            {uploadRunning || isSubmitting ? (
+              <Loader2 className="animate-spin" />
+            ) : (
+              <Upload />
+            )}
+            Upload all refs to Flow
+          </Button>
+        </div>
+      )}
       <div className="grid gap-3 sm:grid-cols-2">
         {assets.map((asset) => (
           <ProductReferenceCard
@@ -1234,14 +1580,18 @@ function ReferenceCard({
   asset,
   task,
   isSubmitting,
+  isUploadSubmitting,
   onGenerate,
+  onUpload,
   onSaved,
 }: {
   label: string
   asset?: AdAsset
   task?: AdGenerationTask
   isSubmitting: boolean
+  isUploadSubmitting: boolean
   onGenerate: (assetId: string) => void
+  onUpload: (assetId: string, file: File) => void
   onSaved: (project: AdProject) => void
 }) {
   const running = isRunning(task)
@@ -1374,8 +1724,35 @@ function ReferenceCard({
         onClick={() => asset && onGenerate(asset.id)}
       >
         {running ? <Loader2 className="animate-spin" /> : <RefreshCw />}
-        Generate
+        {asset?.imageUrl ? "Regenerate" : "Generate"}
       </Button>
+      <label className="mt-2 block">
+        <input
+          className="sr-only"
+          type="file"
+          accept="image/*"
+          disabled={!asset || running || isUploadSubmitting}
+          onChange={(event) => {
+            const file = event.target.files?.[0]
+            if (asset && file) onUpload(asset.id, file)
+            event.currentTarget.value = ""
+          }}
+        />
+        <span
+          className={`flex h-9 w-full cursor-pointer items-center justify-center gap-2 rounded-md border border-zinc-300 px-3 text-sm font-medium transition-colors hover:bg-zinc-100 ${
+            !asset || running || isUploadSubmitting
+              ? "pointer-events-none cursor-not-allowed opacity-50"
+              : ""
+          }`}
+        >
+          {isUploadSubmitting ? (
+            <Loader2 className="size-4 animate-spin" />
+          ) : (
+            <Upload className="size-4" />
+          )}
+          Upload image
+        </span>
+      </label>
     </section>
   )
 }
@@ -1394,44 +1771,44 @@ function ProjectBrief({ project }: { project: AdProject }) {
           <span className="text-xs font-medium text-zinc-500">View brief</span>
         </summary>
         <div className="grid gap-3 border-t border-zinc-200 p-4 md:grid-cols-2">
-        <div>
-          <h2 className="text-sm font-semibold">Brief</h2>
-          <p className="mt-1 text-sm leading-5 text-zinc-700">
-            {project.brief}
-          </p>
-        </div>
-        <div>
-          <h2 className="text-sm font-semibold">Product context</h2>
-          <p className="mt-1 text-sm leading-5 text-zinc-700">
-            {project.productContext || "None"}
-          </p>
-        </div>
-        <div>
-          <h2 className="text-sm font-semibold">Script / Timeline</h2>
-          <p className="mt-1 whitespace-pre-wrap text-sm leading-5 text-zinc-700">
-            {project.scriptTimeline || "None"}
-          </p>
-        </div>
-        <div>
-          <h2 className="text-sm font-semibold">Duration range</h2>
-          <p className="mt-1 text-sm leading-5 text-zinc-700">
-            {project.durationRangeMinSec || project.durationRangeMaxSec
-              ? `${project.durationRangeMinSec || "?"}-${project.durationRangeMaxSec || "?"}s`
-              : "None"}
-          </p>
-        </div>
-        <div>
-          <h2 className="text-sm font-semibold">Character brief</h2>
-          <p className="mt-1 whitespace-pre-wrap text-sm leading-5 text-zinc-700">
-            {project.characterBrief || "None"}
-          </p>
-        </div>
-        <div>
-          <h2 className="text-sm font-semibold">Location brief</h2>
-          <p className="mt-1 whitespace-pre-wrap text-sm leading-5 text-zinc-700">
-            {project.locationBrief || "None"}
-          </p>
-        </div>
+          <div>
+            <h2 className="text-sm font-semibold">Brief</h2>
+            <p className="mt-1 text-sm leading-5 text-zinc-700">
+              {project.brief}
+            </p>
+          </div>
+          <div>
+            <h2 className="text-sm font-semibold">Product context</h2>
+            <p className="mt-1 text-sm leading-5 text-zinc-700">
+              {project.productContext || "None"}
+            </p>
+          </div>
+          <div>
+            <h2 className="text-sm font-semibold">Script / Timeline</h2>
+            <p className="mt-1 whitespace-pre-wrap text-sm leading-5 text-zinc-700">
+              {project.scriptTimeline || "None"}
+            </p>
+          </div>
+          <div>
+            <h2 className="text-sm font-semibold">Duration range</h2>
+            <p className="mt-1 text-sm leading-5 text-zinc-700">
+              {project.durationRangeMinSec || project.durationRangeMaxSec
+                ? `${project.durationRangeMinSec || "?"}-${project.durationRangeMaxSec || "?"}s`
+                : "None"}
+            </p>
+          </div>
+          <div>
+            <h2 className="text-sm font-semibold">Character brief</h2>
+            <p className="mt-1 whitespace-pre-wrap text-sm leading-5 text-zinc-700">
+              {project.characterBrief || "None"}
+            </p>
+          </div>
+          <div>
+            <h2 className="text-sm font-semibold">Location brief</h2>
+            <p className="mt-1 whitespace-pre-wrap text-sm leading-5 text-zinc-700">
+              {project.locationBrief || "None"}
+            </p>
+          </div>
         </div>
       </details>
     </section>
@@ -1820,9 +2197,7 @@ function SceneCard({
                   className="h-9 rounded-md border border-amber-300 bg-white px-2 text-sm text-zinc-900"
                   placeholder="Instruction for the new scene plan"
                   value={replanInstruction}
-                  onChange={(event) =>
-                    setReplanInstruction(event.target.value)
-                  }
+                  onChange={(event) => setReplanInstruction(event.target.value)}
                 />
                 <Button
                   size="sm"
@@ -1849,7 +2224,8 @@ function SceneCard({
                   Video prompt
                 </span>
                 <p className="text-xs text-zinc-500">
-                  Direct-write Flow input. Save after editing or to confirm a stale prompt.
+                  Direct-write Flow input. Save after editing or to confirm a
+                  stale prompt.
                 </p>
               </div>
               {scene.videoPromptStale && (
@@ -1879,7 +2255,11 @@ function SceneCard({
                 <Save />
               )}
               Save Video Prompt
-              {videoPromptDirty ? " *" : scene.videoPromptStale ? " (confirm)" : ""}
+              {videoPromptDirty
+                ? " *"
+                : scene.videoPromptStale
+                  ? " (confirm)"
+                  : ""}
             </Button>
           </div>
 
@@ -1899,7 +2279,8 @@ function SceneCard({
               <div>
                 <h3 className="text-sm font-semibold">Video output</h3>
                 <p className="text-xs text-zinc-500">
-                  {selectedCount}/{keyframePromptSlots.length} keyframe references selected
+                  {selectedCount}/{keyframePromptSlots.length} keyframe
+                  references selected
                 </p>
               </div>
               {!canGenerateVideo && (
@@ -1955,65 +2336,65 @@ function VoiceLinesEditor({
         Voice lines ({voiceLines.length})
       </summary>
       <div className="mt-2 grid gap-2 border-t border-zinc-100 pt-2">
-      <div className="flex items-center justify-between gap-2">
-        <span className="text-xs text-zinc-500">Dialogue and delivery</span>
-        <Button
-          size="sm"
-          variant="outline"
-          onClick={() =>
-            onChange([
-              ...voiceLines,
-              {
-                speaker: "Primary actor",
-                timing: "",
-                actionState: "",
-                emotion: "",
-                delivery: "",
-                line: "",
-              },
-            ])
-          }
-        >
-          <Plus />
-          Add Line
-        </Button>
-      </div>
-      {voiceLines.map((voiceLine, index) => (
-        <div key={index} className="grid gap-2 rounded-md bg-zinc-50 p-2">
-          <div className="grid gap-2 md:grid-cols-3">
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-xs text-zinc-500">Dialogue and delivery</span>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() =>
+              onChange([
+                ...voiceLines,
+                {
+                  speaker: "Primary actor",
+                  timing: "",
+                  actionState: "",
+                  emotion: "",
+                  delivery: "",
+                  line: "",
+                },
+              ])
+            }
+          >
+            <Plus />
+            Add Line
+          </Button>
+        </div>
+        {voiceLines.map((voiceLine, index) => (
+          <div key={index} className="grid gap-2 rounded-md bg-zinc-50 p-2">
+            <div className="grid gap-2 md:grid-cols-3">
+              <TextField
+                label="Speaker"
+                value={voiceLine.speaker}
+                onChange={(speaker) => updateLine(index, { speaker })}
+              />
+              <TextField
+                label="Timing"
+                value={voiceLine.timing || ""}
+                onChange={(timing) => updateLine(index, { timing })}
+              />
+              <TextField
+                label="Emotion"
+                value={voiceLine.emotion || ""}
+                onChange={(emotion) => updateLine(index, { emotion })}
+              />
+            </div>
             <TextField
-              label="Speaker"
-              value={voiceLine.speaker}
-              onChange={(speaker) => updateLine(index, { speaker })}
+              label="Action state"
+              value={voiceLine.actionState || ""}
+              onChange={(actionState) => updateLine(index, { actionState })}
             />
             <TextField
-              label="Timing"
-              value={voiceLine.timing || ""}
-              onChange={(timing) => updateLine(index, { timing })}
+              label="Delivery"
+              value={voiceLine.delivery || ""}
+              onChange={(delivery) => updateLine(index, { delivery })}
             />
-            <TextField
-              label="Emotion"
-              value={voiceLine.emotion || ""}
-              onChange={(emotion) => updateLine(index, { emotion })}
+            <TextareaField
+              label="Exact line"
+              value={voiceLine.line}
+              onChange={(line) => updateLine(index, { line })}
             />
           </div>
-          <TextField
-            label="Action state"
-            value={voiceLine.actionState || ""}
-            onChange={(actionState) => updateLine(index, { actionState })}
-          />
-          <TextField
-            label="Delivery"
-            value={voiceLine.delivery || ""}
-            onChange={(delivery) => updateLine(index, { delivery })}
-          />
-          <TextareaField
-            label="Exact line"
-            value={voiceLine.line}
-            onChange={(line) => updateLine(index, { line })}
-          />
-        </div>
-      ))}
+        ))}
       </div>
     </details>
   )
@@ -2040,67 +2421,69 @@ function ActingBeatsEditor({
         Acting beats ({actingBeats.length})
       </summary>
       <div className="mt-2 grid gap-2 border-t border-zinc-100 pt-2">
-      <div className="flex items-center justify-between gap-2">
-        <span className="text-xs text-zinc-500">Performance by time range</span>
-        <Button
-          size="sm"
-          variant="outline"
-          onClick={() =>
-            onChange([
-              ...actingBeats,
-              {
-                timing: "",
-                emotion: "",
-                facialExpression: "",
-                bodyLanguage: "",
-                microAction: "",
-                gaze: "",
-              },
-            ])
-          }
-        >
-          <Plus />
-          Add Beat
-        </Button>
-      </div>
-      {actingBeats.map((beat, index) => (
-        <div key={index} className="grid gap-2 rounded-md bg-zinc-50 p-2">
-          <div className="grid gap-2 md:grid-cols-2">
-            <TextField
-              label="Timing"
-              value={beat.timing || ""}
-              onChange={(timing) => updateBeat(index, { timing })}
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-xs text-zinc-500">
+            Performance by time range
+          </span>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() =>
+              onChange([
+                ...actingBeats,
+                {
+                  timing: "",
+                  emotion: "",
+                  facialExpression: "",
+                  bodyLanguage: "",
+                  microAction: "",
+                  gaze: "",
+                },
+              ])
+            }
+          >
+            <Plus />
+            Add Beat
+          </Button>
+        </div>
+        {actingBeats.map((beat, index) => (
+          <div key={index} className="grid gap-2 rounded-md bg-zinc-50 p-2">
+            <div className="grid gap-2 md:grid-cols-2">
+              <TextField
+                label="Timing"
+                value={beat.timing || ""}
+                onChange={(timing) => updateBeat(index, { timing })}
+              />
+              <TextField
+                label="Emotion"
+                value={beat.emotion || ""}
+                onChange={(emotion) => updateBeat(index, { emotion })}
+              />
+            </div>
+            <TextareaField
+              label="Facial expression"
+              value={beat.facialExpression || ""}
+              onChange={(facialExpression) =>
+                updateBeat(index, { facialExpression })
+              }
+            />
+            <TextareaField
+              label="Body language"
+              value={beat.bodyLanguage || ""}
+              onChange={(bodyLanguage) => updateBeat(index, { bodyLanguage })}
             />
             <TextField
-              label="Emotion"
-              value={beat.emotion || ""}
-              onChange={(emotion) => updateBeat(index, { emotion })}
+              label="Micro action"
+              value={beat.microAction || ""}
+              onChange={(microAction) => updateBeat(index, { microAction })}
+            />
+            <TextField
+              label="Gaze"
+              value={beat.gaze || ""}
+              onChange={(gaze) => updateBeat(index, { gaze })}
             />
           </div>
-          <TextareaField
-            label="Facial expression"
-            value={beat.facialExpression || ""}
-            onChange={(facialExpression) =>
-              updateBeat(index, { facialExpression })
-            }
-          />
-          <TextareaField
-            label="Body language"
-            value={beat.bodyLanguage || ""}
-            onChange={(bodyLanguage) => updateBeat(index, { bodyLanguage })}
-          />
-          <TextField
-            label="Micro action"
-            value={beat.microAction || ""}
-            onChange={(microAction) => updateBeat(index, { microAction })}
-          />
-          <TextField
-            label="Gaze"
-            value={beat.gaze || ""}
-            onChange={(gaze) => updateBeat(index, { gaze })}
-          />
-        </div>
-      ))}
+        ))}
       </div>
     </details>
   )
@@ -2177,6 +2560,16 @@ function KeyframeSlotCard({
       productReferences
     ),
   })
+  const [copiedStableKey, setCopiedStableKey] = useState(false)
+  const copyStableKey = () => {
+    void navigator.clipboard
+      .writeText(slot.stableKey)
+      .then(() => {
+        setCopiedStableKey(true)
+        window.setTimeout(() => setCopiedStableKey(false), 1500)
+      })
+      .catch(() => undefined)
+  }
   const updateMutation = useMutation({
     mutationFn: () => updateKeyframePromptSlot(slot.id, draft),
     onSuccess: onSaved,
@@ -2207,9 +2600,26 @@ function KeyframeSlotCard({
   return (
     <div className="grid gap-2 rounded-md border border-zinc-200 p-2">
       <div className="flex items-center justify-between gap-2">
-        <span className="text-xs font-semibold text-zinc-600">
-          Ref {slot.slotIndex + 1}
-        </span>
+        <div className="flex min-w-0 items-center gap-2">
+          <span className="text-xs font-semibold text-zinc-600">
+            Ref {slot.slotIndex + 1}
+          </span>
+          <code className="max-w-48 truncate rounded bg-zinc-100 px-1.5 py-0.5 text-xs text-zinc-700">
+            {slot.stableKey}
+          </code>
+          <button
+            className="inline-flex size-6 shrink-0 items-center justify-center rounded border border-zinc-200 text-zinc-600 hover:bg-zinc-100"
+            type="button"
+            title="Copy keyframe ID"
+            aria-label={`Copy keyframe ID ${slot.stableKey}`}
+            onClick={copyStableKey}
+          >
+            <Copy className="size-3.5" />
+          </button>
+          {copiedStableKey && (
+            <span className="text-xs text-emerald-700">Copied</span>
+          )}
+        </div>
         <div className="flex items-center gap-2">
           {slot.stale && (
             <span className="rounded-md bg-amber-50 px-2 py-1 text-xs font-medium text-amber-700">
@@ -2435,9 +2845,7 @@ function TaskBadge({ task }: { task: AdGenerationTask }) {
   )
 }
 
-function normalizeVoiceLines(
-  voiceLines?: AdVoiceLine[] | null
-): AdVoiceLine[] {
+function normalizeVoiceLines(voiceLines?: AdVoiceLine[] | null): AdVoiceLine[] {
   if (voiceLines?.length) return voiceLines
   return [
     {
