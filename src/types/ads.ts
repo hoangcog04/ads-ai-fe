@@ -133,6 +133,7 @@ export type AdProject = {
   durationRangeMinSec?: number | null
   durationRangeMaxSec?: number | null
   voiceLanguage: string
+  voiceNote?: string | null
   overlayEnabled: boolean
   status: string
   productAnalysis?: Record<string, unknown> | null
@@ -170,6 +171,7 @@ export type CreateAdProjectPayload = {
   durationRangeMinSec?: string
   durationRangeMaxSec?: string
   voiceLanguage: string
+  voiceNote?: string
   overlayEnabled: boolean
   productImage?: File
   productImages: File[]
@@ -193,6 +195,7 @@ export type UpdateAdProjectPayload = {
   durationRangeMinSec?: number | null
   durationRangeMaxSec?: number | null
   voiceLanguage?: string
+  voiceNote?: string
   overlayEnabled?: boolean
 }
 
@@ -214,6 +217,7 @@ export type RenderPlanPromptPayload = {
   locationBrief?: string
   aspectRatio?: string
   voiceLanguage?: string
+  voiceNote?: string
   overlayEnabled?: boolean
   durationRangeMinSec?: string
   durationRangeMaxSec?: string
@@ -237,6 +241,7 @@ export type RenderManualGuidePayload = {
   rawPlan: string
   aspectRatio?: string
   voiceLanguage?: string
+  voiceNote?: string
   overlayEnabled?: boolean
   manualRunId?: string
   productReferences: PromptExportProductReference[]

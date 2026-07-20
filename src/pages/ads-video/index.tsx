@@ -654,6 +654,7 @@ function ProjectPlanEditor({
     durationRangeMinSec: project.durationRangeMinSec?.toString() || "",
     durationRangeMaxSec: project.durationRangeMaxSec?.toString() || "",
     voiceLanguage: project.voiceLanguage || "auto",
+    voiceNote: project.voiceNote || "",
     overlayEnabled: project.overlayEnabled,
   }))
   const setField = <K extends keyof typeof draft>(
@@ -675,6 +676,7 @@ function ProjectPlanEditor({
       ? Number(draft.durationRangeMaxSec)
       : null,
     voiceLanguage: draft.voiceLanguage,
+    voiceNote: draft.voiceNote,
     overlayEnabled: draft.overlayEnabled,
   }
   const savedPayload: UpdateAdProjectPayload = {
@@ -688,6 +690,7 @@ function ProjectPlanEditor({
     durationRangeMinSec: project.durationRangeMinSec ?? null,
     durationRangeMaxSec: project.durationRangeMaxSec ?? null,
     voiceLanguage: project.voiceLanguage,
+    voiceNote: project.voiceNote || "",
     overlayEnabled: project.overlayEnabled,
   }
   const dirty = JSON.stringify(payload) !== JSON.stringify(savedPayload)
@@ -797,6 +800,15 @@ function ProjectPlanEditor({
           </select>
         </label>
       </div>
+      <label className="grid gap-1 text-sm">
+        <span className="font-medium">Voice note</span>
+        <textarea
+          className="min-h-20 rounded-md border border-zinc-300 p-3 leading-5"
+          placeholder="Example: Warm, confident, conversational tone; medium pace."
+          value={draft.voiceNote}
+          onChange={(event) => setField("voiceNote", event.target.value)}
+        />
+      </label>
       <label className="flex w-fit items-center gap-2 text-sm">
         <input
           type="checkbox"
@@ -1067,6 +1079,7 @@ function BriefPanel({
     durationRangeMinSec?: string
     durationRangeMaxSec?: string
     voiceLanguage: string
+    voiceNote?: string
     overlayEnabled: boolean
     productImages: File[]
   }) => void
@@ -1079,6 +1092,7 @@ function BriefPanel({
   const [aspectRatio, setAspectRatio] = useState("9:16")
   const [durationRange, setDurationRange] = useState("")
   const [voiceLanguage, setVoiceLanguage] = useState("auto")
+  const [voiceNote, setVoiceNote] = useState("")
   const [overlayEnabled, setOverlayEnabled] = useState(false)
   const [productRefs, setProductRefs] = useState<ProductImageDraft[]>([])
   const productRefsRef = useRef<ProductImageDraft[]>([])
@@ -1144,6 +1158,7 @@ function BriefPanel({
           durationRangeMinSec,
           durationRangeMaxSec,
           voiceLanguage,
+          voiceNote,
           overlayEnabled,
           productImages: productRefs.map((ref) => ref.file),
         })
@@ -1228,6 +1243,15 @@ function BriefPanel({
           />
         </label>
       </div>
+      <label className="grid gap-1 text-sm">
+        <span className="font-medium">Voice note</span>
+        <textarea
+          className="min-h-20 rounded-md border border-zinc-300 p-3 leading-5"
+          placeholder="Example: Warm, confident, conversational tone; medium pace."
+          value={voiceNote}
+          onChange={(event) => setVoiceNote(event.target.value)}
+        />
+      </label>
       {productRefs.length > 0 && (
         <div className="grid gap-3">
           {productRefs.map((ref, index) => (
