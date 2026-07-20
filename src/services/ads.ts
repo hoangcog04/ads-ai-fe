@@ -15,9 +15,6 @@ export async function createAdProject(payload: CreateAdProjectPayload) {
   const formData = new FormData()
   formData.append("brief", payload.brief)
   formData.append("aspectRatio", payload.aspectRatio)
-  if (payload.targetDurationSec !== undefined) {
-    formData.append("targetDurationSec", String(payload.targetDurationSec))
-  }
   formData.append("voiceLanguage", payload.voiceLanguage)
   formData.append("overlayEnabled", String(payload.overlayEnabled))
   const productImages = payload.productImages ?? []
@@ -134,18 +131,6 @@ export async function replanScene(sceneId: string, instruction: string) {
   return httpRequest.post(`/ads/scenes/${sceneId}/replan`, {
     instruction,
   }) as unknown as AdGenerationTask
-}
-
-export async function generateKeyframe(sceneId: string) {
-  return httpRequest.post(
-    `/ads/scenes/${sceneId}/keyframe`
-  ) as unknown as AdGenerationTask
-}
-
-export async function selectKeyframe(sceneId: string, imageUrl: string) {
-  return httpRequest.post(`/ads/scenes/${sceneId}/keyframe/select`, {
-    imageUrl,
-  }) as unknown as AdProject
 }
 
 export async function addProductReference(

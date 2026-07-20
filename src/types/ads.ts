@@ -20,7 +20,6 @@ export type AdAsset = {
   consistencyPrompt?: string | null
   imageUrl?: string | null
   candidateImages?: string[] | null
-  isLocked: boolean
   status: "PENDING" | "READY" | "FAILED"
 }
 
@@ -131,7 +130,6 @@ export type AdProject = {
   characterBrief?: string | null
   locationBrief?: string | null
   aspectRatio: string
-  targetDurationSec: number
   durationRangeMinSec?: number | null
   durationRangeMaxSec?: number | null
   voiceLanguage: string
@@ -169,7 +167,6 @@ export type CreateAdProjectPayload = {
   characterBrief?: string
   locationBrief?: string
   aspectRatio: string
-  targetDurationSec?: number
   durationRangeMinSec?: string
   durationRangeMaxSec?: string
   voiceLanguage: string

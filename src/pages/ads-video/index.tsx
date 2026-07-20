@@ -5,7 +5,6 @@ import {
   assembleVideo,
   createAdProject,
   generateAsset,
-  generateKeyframe,
   generateKeyframeSlot,
   generateVideo,
   getAdProject,
@@ -14,8 +13,8 @@ import {
   replanScene,
   runAdPlan,
   selectKeyframeSlotCandidate,
-  updateKeyframePromptSlot,
   updateAdProject,
+  updateKeyframePromptSlot,
   updateProductReference,
   updateReferenceAsset,
   updateScene,
@@ -224,11 +223,6 @@ function AdsVideoPage() {
 
   const productRefUploadMutation = useMutation({
     mutationFn: uploadProductReferences,
-    onSuccess: refreshProject,
-  })
-
-  const legacyKeyframeMutation = useMutation({
-    mutationFn: generateKeyframe,
     onSuccess: refreshProject,
   })
 
@@ -556,9 +550,6 @@ function AdsVideoPage() {
             onReplanScene={(sceneId, instruction) =>
               replanMutation.mutate({ sceneId, instruction })
             }
-            onGenerateLegacyKeyframe={(sceneId) =>
-              legacyKeyframeMutation.mutate(sceneId)
-            }
             onGenerateVideo={(sceneId) => videoMutation.mutate(sceneId)}
             onAssembleVideo={() => assembleVideoMutation.mutate(project.id)}
             isAssemblingVideo={assembleVideoMutation.isPending}
@@ -743,9 +734,7 @@ function ProjectPlanEditor({
         <textarea
           className="min-h-32 rounded-md border border-zinc-300 p-3 leading-5"
           value={draft.scriptTimeline}
-          onChange={(event) =>
-            setField("scriptTimeline", event.target.value)
-          }
+          onChange={(event) => setField("scriptTimeline", event.target.value)}
         />
       </label>
       <label className="grid gap-1 text-sm">
@@ -753,9 +742,7 @@ function ProjectPlanEditor({
         <textarea
           className="min-h-24 rounded-md border border-zinc-300 p-3 leading-5"
           value={draft.productContext}
-          onChange={(event) =>
-            setField("productContext", event.target.value)
-          }
+          onChange={(event) => setField("productContext", event.target.value)}
         />
       </label>
       <div className="grid gap-3 md:grid-cols-2">
@@ -800,9 +787,7 @@ function ProjectPlanEditor({
           <select
             className="h-10 rounded-md border border-zinc-300 px-3"
             value={draft.voiceLanguage}
-            onChange={(event) =>
-              setField("voiceLanguage", event.target.value)
-            }
+            onChange={(event) => setField("voiceLanguage", event.target.value)}
           >
             {VOICE_LANGUAGE_OPTIONS.map((option) => (
               <option key={option.value} value={option.value}>
@@ -816,9 +801,7 @@ function ProjectPlanEditor({
         <input
           type="checkbox"
           checked={draft.overlayEnabled}
-          onChange={(event) =>
-            setField("overlayEnabled", event.target.checked)
-          }
+          onChange={(event) => setField("overlayEnabled", event.target.checked)}
         />
         <span className="font-medium">Enable overlay text</span>
       </label>
@@ -1821,7 +1804,6 @@ function SceneList({
   latestTaskByTarget,
   onSaved,
   onReplanScene,
-  onGenerateLegacyKeyframe,
   onGenerateVideo,
   onAssembleVideo,
   isAssemblingVideo,
@@ -1832,7 +1814,6 @@ function SceneList({
   latestTaskByTarget: Map<string, AdGenerationTask>
   onSaved: (project: AdProject) => void
   onReplanScene: (sceneId: string, instruction: string) => void
-  onGenerateLegacyKeyframe: (sceneId: string) => void
   onGenerateVideo: (sceneId: string) => void
   onAssembleVideo: () => void
   isAssemblingVideo: boolean
@@ -1869,7 +1850,6 @@ function SceneList({
           sceneTask={latestTaskByTarget.get(`AdScene:${scene.id}`)}
           onSaved={onSaved}
           onReplanScene={onReplanScene}
-          onGenerateLegacyKeyframe={onGenerateLegacyKeyframe}
           onGenerateVideo={onGenerateVideo}
           onRefresh={onRefresh}
         />
@@ -1942,7 +1922,6 @@ function SceneCard({
   sceneTask,
   onSaved,
   onReplanScene,
-  onGenerateLegacyKeyframe,
   onGenerateVideo,
   onRefresh,
 }: {
@@ -1954,7 +1933,6 @@ function SceneCard({
   sceneTask?: AdGenerationTask
   onSaved: (project: AdProject) => void
   onReplanScene: (sceneId: string, instruction: string) => void
-  onGenerateLegacyKeyframe: (sceneId: string) => void
   onGenerateVideo: (sceneId: string) => void
   onRefresh: () => void
 }) {
@@ -2270,7 +2248,6 @@ function SceneCard({
               latestTaskByTarget={latestTaskByTarget}
               onSaved={onSaved}
               onRefresh={onRefresh}
-              onGenerateLegacyKeyframe={onGenerateLegacyKeyframe}
             />
           )}
 
@@ -2495,28 +2472,20 @@ function KeyframeSlots({
   latestTaskByTarget,
   onSaved,
   onRefresh,
-  onGenerateLegacyKeyframe,
 }: {
   scene: AdScene
   productReferences: AdAsset[]
   latestTaskByTarget: Map<string, AdGenerationTask>
   onSaved: (project: AdProject) => void
   onRefresh: () => void
-  onGenerateLegacyKeyframe: (sceneId: string) => void
 }) {
   const keyframePromptSlots = scene.keyframePromptSlots ?? []
   if (!keyframePromptSlots.length) {
     return (
-      <div className="grid gap-2 rounded-md border border-zinc-200 p-3">
-        <p className="text-sm text-zinc-500">No keyframe slots yet</p>
-        <Button
-          size="sm"
-          variant="outline"
-          onClick={() => onGenerateLegacyKeyframe(scene.id)}
-        >
-          <Camera />
-          Generate Legacy Keyframe
-        </Button>
+      <div className="rounded-md border border-zinc-200 p-3">
+        <p className="text-sm text-zinc-500">
+          No keyframe slots available. Replan this scene to create them.
+        </p>
       </div>
     )
   }

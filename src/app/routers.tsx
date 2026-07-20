@@ -11,7 +11,10 @@ export function AppRouters() {
     <BrowserRouter>
       <Routes>
         {/* Redirect */}
-        <Route path={ROUTES.ROOT} element={<Navigate to={ROUTES.ADS_VIDEO} replace />} />
+        <Route
+          path={ROUTES.ROOT}
+          element={<Navigate to={ROUTES.ADS_VIDEO} replace />}
+        />
         <Route
           path={ROUTES.LEGACY_PRODUCT}
           element={<Navigate to={ROUTES.ADS_VIDEO} replace />}
@@ -23,7 +26,10 @@ export function AppRouters() {
         {/* Private */}
         <Route element={<PrivateLayout />}>
           <Route path={ROUTES.ADS_VIDEO} element={<AdsVideoPage />} />
-          <Route path={`${ROUTES.ADS_VIDEO}/:projectId`} element={<AdsVideoPage />} />
+          <Route
+            path={`${ROUTES.ADS_VIDEO}/:projectId`}
+            element={<AdsVideoPage />}
+          />
           <Route path={ROUTES.EXPORT_PROMPTS} element={<ExportPromptsPage />} />
         </Route>
       </Routes>

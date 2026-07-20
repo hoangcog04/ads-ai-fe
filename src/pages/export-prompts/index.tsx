@@ -1,15 +1,16 @@
 import { useMemo, useState } from "react"
 import type { ReactNode } from "react"
+import { renderManualGuide, renderPlanPrompt } from "@/services/ads"
 import { useMutation } from "@tanstack/react-query"
 import { AlertCircle, Copy, FileJson, Sparkles } from "lucide-react"
-import { Button } from "@/components/ui/button"
-import { renderManualGuide, renderPlanPrompt } from "@/services/ads"
+
 import type {
   ManualPromptBlock,
   PromptExportProductReference,
   RenderManualGuideResponse,
   RenderPlanPromptResponse,
 } from "@/types/ads"
+import { Button } from "@/components/ui/button"
 
 const PRODUCT_KIND_OPTIONS = [
   "app_screen",
@@ -58,20 +59,22 @@ function ExportPromptsPage() {
   const [productRefs, setProductRefs] = useState<ProductImageDraft[]>([])
   const [rawPlan, setRawPlan] = useState("")
   const [planResult, setPlanResult] = useState<RenderPlanPromptResponse | null>(
-    null,
+    null
   )
   const [guideResult, setGuideResult] =
     useState<RenderManualGuideResponse | null>(null)
 
   const productReferences = useMemo(
     () =>
-      productRefs.map((ref, index): PromptExportProductReference => ({
-        id: ref.name || `i_product_${index + 1}`,
-        name: ref.name || `i_product_${index + 1}`,
-        kind: ref.kind || "other",
-        visualDescription: ref.visualDescription,
-      })),
-    [productRefs],
+      productRefs.map(
+        (ref, index): PromptExportProductReference => ({
+          id: ref.name || `i_product_${index + 1}`,
+          name: ref.name || `i_product_${index + 1}`,
+          kind: ref.kind || "other",
+          visualDescription: ref.visualDescription,
+        })
+      ),
+    [productRefs]
   )
 
   const [durationRangeMinSec, durationRangeMaxSec] =
@@ -128,12 +131,12 @@ function ExportPromptsPage() {
 
   const updateProductRef = (
     index: number,
-    patch: Partial<ProductImageDraft>,
+    patch: Partial<ProductImageDraft>
   ) => {
     setProductRefs((refs) =>
       refs.map((ref, refIndex) =>
-        refIndex === index ? { ...ref, ...patch } : ref,
-      ),
+        refIndex === index ? { ...ref, ...patch } : ref
+      )
     )
     setPlanResult(null)
     setGuideResult(null)
@@ -299,8 +302,13 @@ function ExportPromptsPage() {
             <GuideBox title="Manual Flow">
               <ol className="grid list-decimal gap-1 pl-4 text-sm leading-5 text-zinc-600">
                 <li>Manual run id: {manualRunId}</li>
-                <li>Upload the product refs to GPT with their logical names.</li>
-                <li>In Flow, rename uploaded/generated assets to the full output names shown here.</li>
+                <li>
+                  Upload the product refs to GPT with their logical names.
+                </li>
+                <li>
+                  In Flow, rename uploaded/generated assets to the full output
+                  names shown here.
+                </li>
                 <li>Copy the rendered plan prompt into GPT.</li>
                 <li>Paste the returned JSON below.</li>
                 <li>Copy reference, keyframe, and video prompts in order.</li>
@@ -380,9 +388,15 @@ function ManualGuide({ guide }: { guide: RenderManualGuideResponse }) {
     <section className="grid gap-4">
       <GuideBox title="Plan Summary">
         <div className="grid gap-2 text-sm text-zinc-700 sm:grid-cols-3">
-          <SummaryItem label="Product refs" value={guide.summary.productReferenceCount} />
+          <SummaryItem
+            label="Product refs"
+            value={guide.summary.productReferenceCount}
+          />
           <SummaryItem label="Scenes" value={guide.summary.sceneCount} />
-          <SummaryItem label="Keyframes" value={guide.summary.keyframePromptCount} />
+          <SummaryItem
+            label="Keyframes"
+            value={guide.summary.keyframePromptCount}
+          />
           <SummaryItem label="Videos" value={guide.summary.videoPromptCount} />
           <SummaryItem label="Character" value={guide.summary.characterName} />
           <SummaryItem label="Location" value={guide.summary.locationName} />
@@ -403,8 +417,14 @@ function ManualGuide({ guide }: { guide: RenderManualGuideResponse }) {
           </div>
         </GuideBox>
       )}
-      <PromptBlockList title="Reference Prompts" blocks={guide.referencePrompts} />
-      <PromptBlockList title="Keyframe Prompts" blocks={guide.keyframePrompts} />
+      <PromptBlockList
+        title="Reference Prompts"
+        blocks={guide.referencePrompts}
+      />
+      <PromptBlockList
+        title="Keyframe Prompts"
+        blocks={guide.keyframePrompts}
+      />
       <PromptBlockList title="Video Prompts" blocks={guide.videoPrompts} />
     </section>
   )
@@ -441,7 +461,9 @@ function PromptBlock({ block }: { block: ManualPromptBlock }) {
             {block.mediaInputs?.length ? (
               <span>MEDIA INPUTS: {block.mediaInputs.join(" + ")}</span>
             ) : null}
-            {block.durationSec ? <span>DURATION: {block.durationSec}s</span> : null}
+            {block.durationSec ? (
+              <span>DURATION: {block.durationSec}s</span>
+            ) : null}
             <span>OUTPUT NAME: {block.outputName}</span>
           </div>
         </div>
@@ -483,13 +505,7 @@ function PromptTextarea({
   )
 }
 
-function GuideBox({
-  title,
-  children,
-}: {
-  title: string
-  children: ReactNode
-}) {
+function GuideBox({ title, children }: { title: string; children: ReactNode }) {
   return (
     <section className="grid gap-3 rounded-lg border border-zinc-200 bg-white p-4 shadow-sm">
       <h2 className="text-sm font-semibold">{title}</h2>
