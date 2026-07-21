@@ -2,11 +2,19 @@ import { useEffect, useState, type FormEvent } from "react"
 import {
   getFlowConnection,
   loginFlow,
+  logoutFlow,
   type FlowConnection,
 } from "@/services/flow-connection"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import axios from "axios"
-import { AlertTriangle, CheckCircle2, Loader2, LogIn, X } from "lucide-react"
+import {
+  AlertTriangle,
+  CheckCircle2,
+  Loader2,
+  LogIn,
+  LogOut,
+  X,
+} from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 
@@ -49,15 +57,51 @@ export function FlowLoginControl() {
     },
   })
 
+  const logoutMutation = useMutation({
+    mutationFn: logoutFlow,
+    onSuccess: (nextConnection) => {
+      queryClient.setQueryData(FLOW_CONNECTION_QUERY_KEY, nextConnection)
+      setEmail("")
+      setPassword("")
+    },
+    onError: () => {
+      void queryClient.invalidateQueries({
+        queryKey: FLOW_CONNECTION_QUERY_KEY,
+      })
+    },
+  })
+
   const submit = (event: FormEvent) => {
     event.preventDefault()
-    if (!email.trim() || !password || loginMutation.isPending) return
+    if (
+      !email.trim() ||
+      !password ||
+      loginMutation.isPending ||
+      logoutMutation.isPending
+    ) {
+      return
+    }
     loginMutation.mutate()
   }
 
+  const logout = () => {
+    if (
+      !window.confirm(
+        `Clear only the local Flow ${formatSessionStore(connection?.logoutTarget)}? The other session store will be kept.`
+      )
+    ) {
+      return
+    }
+    logoutMutation.mutate()
+  }
+
   const connected = connection?.status === "CONNECTED"
-  const busy = loginMutation.isPending || connection?.status === "CONNECTING"
-  const mutationError = readFlowError(loginMutation.error)
+  const busy =
+    loginMutation.isPending ||
+    logoutMutation.isPending ||
+    connection?.status === "CONNECTING"
+  const mutationError =
+    readFlowError(loginMutation.error) || readFlowError(logoutMutation.error)
   const visibleError = mutationError || connection?.lastError
 
   return (
@@ -88,7 +132,7 @@ export function FlowLoginControl() {
           onMouseDown={(event) => {
             if (
               event.target === event.currentTarget &&
-              !loginMutation.isPending
+              !busy
             ) {
               setOpen(false)
             }
@@ -111,7 +155,7 @@ export function FlowLoginControl() {
               </div>
               <Button
                 aria-label="Close Flow login"
-                disabled={loginMutation.isPending}
+                disabled={busy}
                 size="icon"
                 type="button"
                 variant="ghost"
@@ -132,7 +176,7 @@ export function FlowLoginControl() {
                 <input
                   autoComplete="email"
                   className="h-10 rounded-md border border-zinc-300 px-3 text-sm text-zinc-900"
-                  disabled={loginMutation.isPending}
+                  disabled={busy}
                   required
                   type="email"
                   value={email}
@@ -144,7 +188,7 @@ export function FlowLoginControl() {
                 <input
                   autoComplete="current-password"
                   className="h-10 rounded-md border border-zinc-300 px-3 text-sm text-zinc-900"
-                  disabled={loginMutation.isPending}
+                  disabled={busy}
                   required
                   type="password"
                   value={password}
@@ -156,7 +200,7 @@ export function FlowLoginControl() {
                 <div className="rounded-md bg-red-50 p-3 text-xs leading-5 text-red-700">
                   <span className="inline-flex items-center gap-1 font-semibold">
                     <AlertTriangle className="size-3.5" />
-                    Login failed
+                    Flow session action failed
                   </span>
                   <p className="mt-1">{visibleError}</p>
                   {connection?.lastDebugScreenshotKey && (
@@ -175,6 +219,30 @@ export function FlowLoginControl() {
                 {busy ? "Signing in..." : "Login Google Flow"}
               </Button>
             </form>
+
+            <div className="mt-4 border-t border-zinc-200 pt-4">
+              <p className="text-xs leading-5 text-zinc-500">
+                Logout clears only the configured{" "}
+                <strong>{formatSessionStore(connection?.logoutTarget)}</strong>.
+                The other local session store is kept.
+              </p>
+              <Button
+                className="mt-3 w-full"
+                disabled={busy}
+                type="button"
+                variant="destructive"
+                onClick={logout}
+              >
+                {logoutMutation.isPending ? (
+                  <Loader2 className="animate-spin" />
+                ) : (
+                  <LogOut />
+                )}
+                {logoutMutation.isPending
+                  ? "Clearing Flow session..."
+                  : "Logout & clear Flow session"}
+              </Button>
+            </div>
           </section>
         </div>
       )}
@@ -213,4 +281,10 @@ function readFlowError(error: unknown) {
     return error.response?.data?.message || error.message
   }
   return error instanceof Error ? error.message : "Flow login failed"
+}
+
+function formatSessionStore(value?: "profile" | "storage-state") {
+  return value === "storage-state"
+    ? "storage-state.json"
+    : "persistent Chrome profile"
 }

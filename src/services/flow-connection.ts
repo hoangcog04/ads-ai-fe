@@ -16,6 +16,9 @@ export type FlowConnection = {
   lastError: string | null
   lastDebugScreenshotKey: string | null
   updatedAt: string | null
+  loginOutput: "profile" | "storage-state"
+  generationSession: "profile" | "storage-state"
+  logoutTarget: "profile" | "storage-state"
 }
 
 export function getFlowConnection() {
@@ -29,4 +32,10 @@ export function loginFlow(email: string, password: string) {
     email,
     password,
   }) as unknown as Promise<FlowConnection>
+}
+
+export function logoutFlow() {
+  return httpRequest.post(
+    "/flow-connection/logout"
+  ) as unknown as Promise<FlowConnection>
 }
