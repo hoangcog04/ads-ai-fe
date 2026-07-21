@@ -52,6 +52,7 @@ import type {
   UpdateAdProjectPayload,
 } from "@/types/ads"
 import { Button } from "@/components/ui/button"
+import { FlowLoginControl } from "@/components/flow-login-control"
 
 const PRODUCT_KIND_OPTIONS = [
   "app_screen",
@@ -292,17 +293,22 @@ function AdsVideoPage() {
   if (!projectId) {
     return (
       <main className="min-h-screen bg-zinc-50 px-4 py-6 text-zinc-950">
-        <div className="mx-auto grid max-w-7xl items-start gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
-          <BriefPanel
-            isSubmitting={createMutation.isPending}
-            error={readMutationError(createMutation.error)}
-            onCreate={(payload) => createMutation.mutate(payload)}
-          />
-          <ProjectListPanel
-            projects={projectsQuery.data ?? []}
-            isLoading={projectsQuery.isLoading}
-            onOpen={(id) => navigate(`${ROUTES.ADS_VIDEO}/${id}`)}
-          />
+        <div className="mx-auto grid max-w-7xl gap-4">
+          <div className="flex justify-end">
+            <FlowLoginControl />
+          </div>
+          <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
+            <BriefPanel
+              isSubmitting={createMutation.isPending}
+              error={readMutationError(createMutation.error)}
+              onCreate={(payload) => createMutation.mutate(payload)}
+            />
+            <ProjectListPanel
+              projects={projectsQuery.data ?? []}
+              isLoading={projectsQuery.isLoading}
+              onOpen={(id) => navigate(`${ROUTES.ADS_VIDEO}/${id}`)}
+            />
+          </div>
         </div>
       </main>
     )
@@ -395,6 +401,7 @@ function AdsVideoPage() {
             </div>
           </div>
           <div className="flex items-center gap-2">
+            <FlowLoginControl />
             <Button
               variant={workspaceStage === "plan" ? "secondary" : "default"}
               onClick={() => setWorkspaceStage("plan")}
