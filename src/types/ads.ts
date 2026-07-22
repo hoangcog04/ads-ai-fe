@@ -108,7 +108,9 @@ export type AdGenerationTask = {
   targetId: string
   status: AdTaskStatus
   progress: number
+  errorCode?: string | null
   errorMessage?: string | null
+  bullJobId?: string | null
   createdAt: string
 }
 

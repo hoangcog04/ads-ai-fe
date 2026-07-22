@@ -2831,17 +2831,50 @@ function TextareaField({
 }
 
 function TaskBadge({ task }: { task: AdGenerationTask }) {
+  const [copiedJobId, setCopiedJobId] = useState(false)
   const colors =
     task.status === "FAILED"
       ? "bg-red-50 text-red-700"
       : task.status === "COMPLETED"
         ? "bg-emerald-50 text-emerald-700"
         : "bg-blue-50 text-blue-700"
+  const copyJobId = (value: string) => {
+    void navigator.clipboard
+      .writeText(value)
+      .then(() => {
+        setCopiedJobId(true)
+        window.setTimeout(() => setCopiedJobId(false), 1500)
+      })
+      .catch(() => undefined)
+  }
+
   return (
-    <span className={`rounded-md px-2 py-1 text-xs font-medium ${colors}`}>
-      {task.status}
-      {isRunning(task) ? ` ${task.progress}%` : ""}
-    </span>
+    <div className="flex max-w-full flex-col items-end gap-1">
+      <span className={`rounded-md px-2 py-1 text-xs font-medium ${colors}`}>
+        {task.status}
+        {isRunning(task) ? ` ${task.progress}%` : ""}
+      </span>
+      {task.status === "FAILED" && task.errorCode && (
+        <div className="flex max-w-64 items-center gap-1 rounded bg-zinc-100 px-1.5 py-1 text-[11px] text-zinc-700">
+          <span className="shrink-0 font-medium">Code:</span>
+          <code className="truncate">{task.errorCode}</code>
+        </div>
+      )}
+      {task.status === "FAILED" && task.bullJobId && (
+        <button
+          type="button"
+          className="flex max-w-64 items-center gap-1 rounded bg-zinc-100 px-1.5 py-1 text-left text-[11px] text-zinc-700 hover:bg-zinc-200"
+          title={`Copy Job: ${task.bullJobId}`}
+          aria-label={`Copy Job ${task.bullJobId}`}
+          onClick={() => copyJobId(task.bullJobId!)}
+        >
+          <span className="shrink-0 font-medium">Job:</span>
+          <code className="truncate">{task.bullJobId}</code>
+          <Copy className="size-3 shrink-0" />
+          {copiedJobId && <span className="shrink-0 text-emerald-700">Copied</span>}
+        </button>
+      )}
+    </div>
   )
 }
 
