@@ -1,35 +1,36 @@
-import { LS_KEYS, ROUTES } from "@/constants"
+import { ROUTES } from "@/constants"
 import { ErrorResponse } from "@/types"
+import {
+  clearTokens,
+  getAccessToken,
+  getRefreshToken,
+  setTokens,
+} from "@/utils/token"
 import axios, { AxiosError, AxiosRequestConfig, AxiosResponse } from "axios"
 
 let refreshPromise: Promise<string> | null = null
 async function refreshAccessToken() {
   if (!refreshPromise) {
     refreshPromise = (async () => {
-      const resp = await fetch(
-        `${import.meta.env.VITE_API_URL}/token/refresh/`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            refresh: localStorage.getItem(LS_KEYS.REFRESH_TOKEN),
-          }),
-        }
-      )
+      const resp = await fetch(`${import.meta.env.VITE_API_URL}/auth/refresh`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          refreshToken: getRefreshToken(),
+        }),
+      })
       const data = await resp.json()
 
       if (resp.status !== 200) {
-        localStorage.removeItem(LS_KEYS.ACCESS_TOKEN)
-        localStorage.removeItem(LS_KEYS.REFRESH_TOKEN)
+        clearTokens()
         window.location.href = ROUTES.LOGIN
 
-        return Promise.reject(data.message.detail)
+        return Promise.reject(data?.message || "Session refresh failed")
       }
 
-      localStorage.setItem(LS_KEYS.ACCESS_TOKEN, data.access)
-      localStorage.setItem(LS_KEYS.REFRESH_TOKEN, data.refresh)
+      setTokens(data.accessToken, data.refreshToken)
 
-      return data.access
+      return data.accessToken
     })().finally(
       // callback
       () => {
@@ -47,7 +48,7 @@ const httpRequest = axios.create({
 })
 
 httpRequest.interceptors.request.use((config) => {
-  const token = localStorage.getItem(LS_KEYS.ACCESS_TOKEN)
+  const token = getAccessToken()
   if (token) config.headers.Authorization = `Bearer ${token}`
   return config
 })
@@ -61,12 +62,11 @@ httpRequest.interceptors.response.use(
     const status = error.response?.status
 
     if (status === 401 && !error.config?.url?.includes("/auth/login")) {
-      const access = localStorage.getItem(LS_KEYS.ACCESS_TOKEN)
-      const refresh = localStorage.getItem(LS_KEYS.REFRESH_TOKEN)
+      const access = getAccessToken()
+      const refresh = getRefreshToken()
       // logged out already
       if (!access || !refresh) {
-        localStorage.removeItem(LS_KEYS.ACCESS_TOKEN)
-        localStorage.removeItem(LS_KEYS.REFRESH_TOKEN)
+        clearTokens()
         window.location.href = ROUTES.LOGIN
 
         return Promise.reject(error.response?.data)
@@ -75,15 +75,13 @@ httpRequest.interceptors.response.use(
       // try to refresh
       try {
         const newAccessToken = await refreshAccessToken()
-        localStorage.setItem(LS_KEYS.ACCESS_TOKEN, newAccessToken)
         if (error.config?.headers) {
           error.config.headers.Authorization = `Bearer ${newAccessToken}`
         }
 
         return httpRequest(error.config as AxiosRequestConfig)
       } catch {
-        localStorage.removeItem(LS_KEYS.ACCESS_TOKEN)
-        localStorage.removeItem(LS_KEYS.REFRESH_TOKEN)
+        clearTokens()
         window.location.href = ROUTES.LOGIN
 
         return Promise.reject(error.response?.data)
