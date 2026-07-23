@@ -61,6 +61,7 @@ export type AdKeyframePromptSlot = {
   prompt: string
   productReferenceIds?: string[] | null
   stale: boolean
+  includeInVideo: boolean
   selectedCandidateId?: string | null
   selectedCandidate?: AdKeyframeCandidate | null
   candidates: AdKeyframeCandidate[]

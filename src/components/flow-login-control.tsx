@@ -130,10 +130,7 @@ export function FlowLoginControl() {
           className="fixed inset-0 z-50 grid place-items-center bg-black/50 px-4 py-8"
           role="presentation"
           onMouseDown={(event) => {
-            if (
-              event.target === event.currentTarget &&
-              !busy
-            ) {
+            if (event.target === event.currentTarget && !busy) {
               setOpen(false)
             }
           }}

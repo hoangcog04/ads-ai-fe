@@ -2025,12 +2025,15 @@ function SceneCard({
   const sceneDirty = JSON.stringify(draft) !== JSON.stringify(persistedDraft)
   const videoPromptDirty = videoPromptDraft !== (scene.videoPrompt || "")
   const keyframePromptSlots = scene.keyframePromptSlots ?? []
-  const selectedCount = keyframePromptSlots.filter(
+  const includedSlots = keyframePromptSlots.filter(
+    (slot) => slot.includeInVideo !== false
+  )
+  const excludedCount = keyframePromptSlots.length - includedSlots.length
+  const selectedCount = includedSlots.filter(
     (slot) => !!slot.selectedCandidate
   ).length
   const canGenerateVideo =
-    keyframePromptSlots.length > 0 &&
-    selectedCount === keyframePromptSlots.length
+    includedSlots.length > 0 && selectedCount === includedSlots.length
 
   return (
     <article className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm">
@@ -2287,13 +2290,16 @@ function SceneCard({
               <div>
                 <h3 className="text-sm font-semibold">Video output</h3>
                 <p className="text-xs text-zinc-500">
-                  {selectedCount}/{keyframePromptSlots.length} keyframe
-                  references selected
+                  {selectedCount}/{includedSlots.length} included keyframes
+                  selected
+                  {excludedCount > 0 ? ` · ${excludedCount} excluded` : ""}
                 </p>
               </div>
               {!canGenerateVideo && (
                 <span className="rounded-md bg-amber-50 px-2 py-1 text-xs text-amber-700">
-                  Select every keyframe first
+                  {includedSlots.length === 0
+                    ? "Enable at least one keyframe"
+                    : "Select every enabled keyframe first"}
                 </span>
               )}
             </div>
@@ -2574,6 +2580,11 @@ function KeyframeSlotCard({
     mutationFn: () => updateKeyframePromptSlot(slot.id, draft),
     onSuccess: onSaved,
   })
+  const includeMutation = useMutation({
+    mutationFn: (includeInVideo: boolean) =>
+      updateKeyframePromptSlot(slot.id, { includeInVideo }),
+    onSuccess: onSaved,
+  })
   const generateMutation = useMutation({
     mutationFn: () => generateKeyframeSlot(slot.id),
     onSuccess: onRefresh,
@@ -2621,6 +2632,15 @@ function KeyframeSlotCard({
           )}
         </div>
         <div className="flex items-center gap-2">
+          <label className="flex items-center gap-2 text-xs font-medium text-zinc-700">
+            <input
+              type="checkbox"
+              checked={slot.includeInVideo !== false}
+              disabled={includeMutation.isPending || updateMutation.isPending}
+              onChange={(event) => includeMutation.mutate(event.target.checked)}
+            />
+            Use in video
+          </label>
           {slot.stale && (
             <span className="rounded-md bg-amber-50 px-2 py-1 text-xs font-medium text-amber-700">
               Needs keyframe
@@ -2733,7 +2753,9 @@ function KeyframeSlotCard({
         <Button
           size="sm"
           variant="outline"
-          disabled={updateMutation.isPending || !dirty}
+          disabled={
+            updateMutation.isPending || includeMutation.isPending || !dirty
+          }
           onClick={() => updateMutation.mutate()}
         >
           {updateMutation.isPending ? (
@@ -2758,9 +2780,9 @@ function KeyframeSlotCard({
           {slot.selectedCandidate.warning}
         </p>
       )}
-      {updateMutation.error && (
+      {(updateMutation.error || includeMutation.error) && (
         <p className="rounded-md bg-red-50 p-2 text-xs leading-4 text-red-700">
-          {readMutationError(updateMutation.error)}
+          {readMutationError(updateMutation.error || includeMutation.error)}
         </p>
       )}
     </div>
@@ -2871,7 +2893,9 @@ function TaskBadge({ task }: { task: AdGenerationTask }) {
           <span className="shrink-0 font-medium">Job:</span>
           <code className="truncate">{task.bullJobId}</code>
           <Copy className="size-3 shrink-0" />
-          {copiedJobId && <span className="shrink-0 text-emerald-700">Copied</span>}
+          {copiedJobId && (
+            <span className="shrink-0 text-emerald-700">Copied</span>
+          )}
         </button>
       )}
     </div>
