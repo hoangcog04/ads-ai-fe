@@ -84,6 +84,7 @@ export type AdScene = {
   actingBeats?: AdActingBeat[] | null
   ambientAudio?: string | null
   onScreenText?: string | null
+  timingBeats?: string[] | null
   keyframePrompt?: string | null
   keyframePromptStale: boolean
   keyframePromptSlots: AdKeyframePromptSlot[]
@@ -140,6 +141,7 @@ export type AdProject = {
   overlayEnabled: boolean
   status: string
   productAnalysis?: Record<string, unknown> | null
+  finalVideoStorageKey?: string | null
   finalVideoUrl?: string | null
   assets: AdAsset[]
   scenes: AdScene[]

@@ -53,6 +53,7 @@ import type {
   AdVoiceLine,
   UpdateAdProjectPayload,
 } from "@/types/ads"
+import { resolveMediaUrl } from "@/lib/media-url"
 import { Button } from "@/components/ui/button"
 import { FlowLoginControl } from "@/components/flow-login-control"
 
@@ -485,6 +486,7 @@ function AdsVideoPage() {
               hasUploadedReferences={hasUploadedReferenceSet}
               latestTaskByTarget={latestTaskByTarget}
             />
+
             <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1.35fr)_minmax(280px,1fr)_minmax(280px,1fr)]">
               <ProductReferencesPanel
                 projectId={project.id}
@@ -547,6 +549,7 @@ function AdsVideoPage() {
                 Next: Keyframes
               </Button>
             </div>
+            <PlanJsonPanel project={project} />
           </section>
         )}
 
@@ -912,6 +915,240 @@ function ImportPlanPanel({
   )
 }
 
+function PlanJsonPanel({ project }: { project: AdProject }) {
+  const character = project.assets.find((asset) => asset.type === "CHARACTER")
+  const location = project.assets.find((asset) => asset.type === "LOCATION")
+  const productReferences = project.assets.filter(
+    (asset) => asset.type === "PRODUCT"
+  )
+  const plan = useMemo(
+    () => ({
+      voiceNote: project.voiceNote || "",
+      productAnalysis: project.productAnalysis || {},
+      productReferences: productReferences.map((asset) => ({
+        id: asset.id,
+        name: asset.name,
+        kind: asset.kind || "other",
+        visualDescription: asset.visualDescription || asset.description || "",
+        lockPrompt: asset.lockPrompt || "",
+        useWhen: asset.useWhen || "",
+      })),
+      primaryCharacter: {
+        name: character?.name || "Primary character",
+        description: character?.description || "",
+        imagePrompt: character?.imagePrompt || "",
+        consistencyPrompt: character?.consistencyPrompt || "",
+      },
+      primaryLocation: {
+        name: location?.name || "Primary location",
+        description: location?.description || "",
+        imagePrompt: location?.imagePrompt || "",
+        consistencyPrompt: location?.consistencyPrompt || "",
+      },
+      scenes: project.scenes.map((scene) => ({
+        sceneIndex: scene.sceneIndex,
+        narrativePurpose: scene.narrativePurpose || "",
+        title: scene.title,
+        durationSec: scene.durationSec,
+        visualAction: scene.visualAction,
+        productMoment: scene.productMoment || "",
+        characterAction: scene.characterAction || "",
+        camera: {
+          shot: scene.cameraShot || "",
+          movement: scene.cameraMovement || "",
+          composition: scene.composition || "",
+          alternatives: scene.cameraAlternatives || [],
+        },
+        voiceLines: scene.voiceLines || [],
+        actingBeats: scene.actingBeats || [],
+        ambientAudio: scene.ambientAudio || "",
+        onScreenText: scene.onScreenText || "",
+        timingBeats: scene.timingBeats || [],
+        keyframePrompts: (scene.keyframePromptSlots || []).map((slot) => ({
+          id: slot.stableKey,
+          label: slot.label,
+          timing: slot.timing || "",
+          purpose: slot.purpose,
+          prompt: slot.prompt,
+          ...(slot.productReferenceIds != null
+            ? { productReferenceIds: slot.productReferenceIds }
+            : {}),
+        })),
+        videoPrompt: scene.videoPrompt || "",
+        negativeRules: scene.negativeRules || [],
+      })),
+    }),
+    [character, location, productReferences, project]
+  )
+  const planJson = useMemo(() => JSON.stringify(plan, null, 2), [plan])
+  const [copied, setCopied] = useState(false)
+  const keyframePromptCount = project.scenes.reduce(
+    (total, scene) => total + (scene.keyframePromptSlots?.length || 0),
+    0
+  )
+  const copyPlan = () => {
+    void navigator.clipboard
+      .writeText(planJson)
+      .then(() => {
+        setCopied(true)
+        window.setTimeout(() => setCopied(false), 1500)
+      })
+      .catch(() => undefined)
+  }
+
+  return (
+    <section className="grid gap-4 rounded-lg border border-zinc-200 bg-white p-4 shadow-sm">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <div className="flex flex-wrap items-center gap-2">
+            <FileJson className="size-4" />
+            <h2 className="text-sm font-semibold">Plan JSON & prompts</h2>
+            <span className="rounded bg-zinc-100 px-2 py-1 text-xs text-zinc-600">
+              {project.scenes.length} scenes
+            </span>
+            <span className="rounded bg-zinc-100 px-2 py-1 text-xs text-zinc-600">
+              {keyframePromptCount} keyframe prompts
+            </span>
+          </div>
+          <p className="mt-1 text-xs text-zinc-500">
+            Current persisted plan, rebuilt in import-compatible JSON shape.
+            Runtime Flow mappings are added later during generation.
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          {copied && (
+            <span className="text-xs font-medium text-emerald-700">Copied</span>
+          )}
+          <Button type="button" size="sm" variant="outline" onClick={copyPlan}>
+            <Copy />
+            Copy full JSON
+          </Button>
+        </div>
+      </div>
+
+      <div className="grid items-start gap-3 xl:grid-cols-2">
+        {/* <details
+          open
+          className="rounded-md border border-zinc-200 bg-zinc-50 p-3"
+        >
+          <summary className="cursor-pointer text-sm font-semibold text-zinc-800">
+            Reference prompts
+          </summary>
+          <div className="mt-3 grid gap-3">
+            <PromptPreview
+              label="Character image prompt"
+              value={character?.imagePrompt}
+            />
+            <PromptPreview
+              label="Character consistency prompt"
+              value={character?.consistencyPrompt}
+            />
+            <PromptPreview
+              label="Location image prompt"
+              value={location?.imagePrompt}
+            />
+            <PromptPreview
+              label="Location consistency prompt"
+              value={location?.consistencyPrompt}
+            />
+            {productReferences.map((asset) => (
+              <PromptPreview
+                key={asset.id}
+                label={`${asset.name} · product lock`}
+                value={asset.lockPrompt}
+              />
+            ))}
+          </div>
+        </details> */}
+
+        <details
+          open
+          className="rounded-md border border-zinc-200 bg-zinc-50 p-3"
+        >
+          <summary className="cursor-pointer text-sm font-semibold text-zinc-800">
+            Scene generation prompts
+          </summary>
+          <div className="mt-3 grid gap-2">
+            {project.scenes.map((scene) => (
+              <details
+                key={scene.id}
+                className="rounded-md border border-zinc-200 bg-white p-2"
+              >
+                <summary className="cursor-pointer text-xs font-semibold text-zinc-700">
+                  Scene {scene.sceneIndex}: {scene.title} ·{" "}
+                  {scene.keyframePromptSlots?.length || 0} keyframes
+                </summary>
+                <div className="mt-2 grid gap-2">
+                  <PromptPreview
+                    label="Stored video prompt"
+                    value={scene.videoPrompt}
+                  />
+                  {(scene.keyframePromptSlots || []).map((slot) => (
+                    <PromptPreview
+                      key={slot.id}
+                      label={`Keyframe · ${slot.stableKey} · ${slot.label}`}
+                      value={slot.prompt}
+                    />
+                  ))}
+                </div>
+              </details>
+            ))}
+          </div>
+        </details>
+      </div>
+
+      <details className="rounded-md border border-zinc-800 bg-zinc-950 p-3 text-zinc-100">
+        <summary className="cursor-pointer text-sm font-semibold">
+          Full plan JSON
+        </summary>
+        <pre className="mt-3 max-h-[42rem] overflow-auto whitespace-pre-wrap break-words rounded bg-black/30 p-3 font-mono text-xs leading-5 text-zinc-200">
+          {planJson}
+        </pre>
+      </details>
+    </section>
+  )
+}
+
+function PromptPreview({
+  label,
+  value,
+}: {
+  label: string
+  value?: string | null
+}) {
+  const [copied, setCopied] = useState(false)
+  if (!value?.trim()) return null
+
+  const copyPrompt = () => {
+    void navigator.clipboard
+      .writeText(value)
+      .then(() => {
+        setCopied(true)
+        window.setTimeout(() => setCopied(false), 1500)
+      })
+      .catch(() => undefined)
+  }
+
+  return (
+    <div className="grid gap-2 rounded-md border border-zinc-200 bg-white p-2">
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-xs font-semibold text-zinc-700">{label}</span>
+        <button
+          className="inline-flex h-7 items-center gap-1 rounded border border-zinc-200 px-2 text-xs text-zinc-600 hover:bg-zinc-100"
+          type="button"
+          onClick={copyPrompt}
+        >
+          <Copy className="size-3" />
+          {copied ? "Copied" : "Copy"}
+        </button>
+      </div>
+      <pre className="max-h-52 overflow-auto whitespace-pre-wrap break-words rounded bg-zinc-50 p-2 font-mono text-xs leading-5 text-zinc-700">
+        {value}
+      </pre>
+    </div>
+  )
+}
+
 function ReferenceStageSummary({
   character,
   location,
@@ -1033,7 +1270,7 @@ function ProjectListPanel({
             <div className="flex aspect-square items-center justify-center overflow-hidden rounded-md bg-zinc-100">
               {project.productImageUrl ? (
                 <img
-                  src={project.productImageUrl}
+                  src={resolveMediaUrl(project.productImageUrl)}
                   alt=""
                   className="h-full w-full object-cover"
                 />
@@ -1576,7 +1813,7 @@ function ProductReferenceCard({
       </div>
       {asset.imageUrl ? (
         <img
-          src={asset.imageUrl}
+          src={resolveMediaUrl(asset.imageUrl)}
           alt={asset.name}
           className="aspect-[9/12] w-full rounded-md object-cover"
         />
@@ -1741,7 +1978,7 @@ function ReferenceCard({
       <div className="mt-2">
         {asset?.imageUrl ? (
           <img
-            src={asset.imageUrl}
+            src={resolveMediaUrl(asset.imageUrl)}
             alt={asset.name}
             className="aspect-[4/5] w-full rounded-md object-cover"
           />
@@ -1999,13 +2236,13 @@ function FinalVideoPanel({
       {project.finalVideoUrl && (
         <div className="grid gap-2">
           <video
-            src={project.finalVideoUrl}
+            src={resolveMediaUrl(project.finalVideoUrl)}
             controls
             className="aspect-[9/16] w-full max-w-sm rounded-md bg-black"
           />
           <a
             className="w-fit rounded-md border border-zinc-300 px-3 py-2 text-sm font-medium text-zinc-900 hover:bg-zinc-50"
-            href={project.finalVideoUrl}
+            href={resolveMediaUrl(project.finalVideoUrl)}
             download
           >
             Download merged video
@@ -2430,7 +2667,7 @@ function SceneCard({
             )}
             {scene.videoUrl && (
               <video
-                src={scene.videoUrl}
+                src={resolveMediaUrl(scene.videoUrl)}
                 controls
                 className="aspect-[9/16] w-full rounded-md bg-black"
               />
@@ -2830,7 +3067,7 @@ function KeyframeSlotCard({
       <div className="overflow-hidden rounded-md border border-zinc-200 bg-zinc-100">
         {slot.selectedCandidate?.imageUrl ? (
           <img
-            src={slot.selectedCandidate.imageUrl}
+            src={resolveMediaUrl(slot.selectedCandidate.imageUrl)}
             alt={slot.label}
             className="aspect-[9/16] w-full object-cover"
           />
@@ -2853,7 +3090,7 @@ function KeyframeSlotCard({
               onClick={() => selectMutation.mutate(candidate.id)}
             >
               <img
-                src={candidate.imageUrl}
+                src={resolveMediaUrl(candidate.imageUrl)}
                 alt=""
                 className="aspect-square w-full object-cover"
               />
