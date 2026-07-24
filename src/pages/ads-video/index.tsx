@@ -4,6 +4,7 @@ import {
   addProductReference,
   assembleVideo,
   createAdProject,
+  deleteProductReference,
   generateAsset,
   generateKeyframeSlot,
   generateVideo,
@@ -35,6 +36,7 @@ import {
   RefreshCw,
   Save,
   Sparkles,
+  Trash2,
   Upload,
   Video,
 } from "lucide-react"
@@ -76,6 +78,7 @@ const DURATION_RANGE_OPTIONS = [
   { value: "30-40", label: "30-40s" },
   { value: "40-60", label: "40-60s" },
 ]
+const SCENE_DURATION_OPTIONS = [4, 6, 8, 10] as const
 const WORKSPACE_STAGES = [
   { id: "plan", label: "Plan" },
   { id: "references", label: "References" },
@@ -465,6 +468,7 @@ function AdsVideoPage() {
               isSubmitting={productRefUploadMutation.isPending}
               canUpload={false}
               showFlowUpload={false}
+              allowDelete
               onUpload={() => productRefUploadMutation.mutate(project.id)}
               onSaved={(updated) =>
                 queryClient.setQueryData(["ads-project", updated.id], updated)
@@ -1139,6 +1143,13 @@ function BriefPanel({
       )
     )
   }
+  const removeProductRef = (index: number) => {
+    setProductRefs((prev) => {
+      const removed = prev[index]
+      if (removed) URL.revokeObjectURL(removed.previewUrl)
+      return prev.filter((_, refIndex) => refIndex !== index)
+    })
+  }
 
   return (
     <form
@@ -1272,6 +1283,20 @@ function BriefPanel({
                 className="aspect-[9/12] w-full rounded-md object-cover"
               />
               <div className="grid gap-2">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-xs font-semibold text-zinc-600">
+                    Product reference {index + 1}
+                  </span>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="default"
+                    onClick={() => removeProductRef(index)}
+                  >
+                    <Trash2 />
+                    Remove
+                  </Button>
+                </div>
                 <div className="grid gap-2 sm:grid-cols-[1fr_150px]">
                   <TextField
                     label="Image id/name"
@@ -1350,6 +1375,7 @@ function ProductReferencesPanel({
   isSubmitting,
   canUpload,
   showFlowUpload = true,
+  allowDelete = false,
   onUpload,
   onSaved,
 }: {
@@ -1359,6 +1385,7 @@ function ProductReferencesPanel({
   isSubmitting: boolean
   canUpload: boolean
   showFlowUpload?: boolean
+  allowDelete?: boolean
   onUpload: () => void
   onSaved: (project: AdProject) => void
 }) {
@@ -1421,6 +1448,7 @@ function ProductReferencesPanel({
           <ProductReferenceCard
             key={asset.id}
             asset={asset}
+            allowDelete={allowDelete}
             onSaved={onSaved}
           />
         ))}
@@ -1486,9 +1514,11 @@ function ProductReferencesPanel({
 
 function ProductReferenceCard({
   asset,
+  allowDelete,
   onSaved,
 }: {
   asset: AdAsset
+  allowDelete: boolean
   onSaved: (project: AdProject) => void
 }) {
   const [draft, setDraft] = useState({
@@ -1500,6 +1530,10 @@ function ProductReferenceCard({
   })
   const updateMutation = useMutation({
     mutationFn: () => updateProductReference(asset.id, draft),
+    onSuccess: onSaved,
+  })
+  const deleteMutation = useMutation({
+    mutationFn: () => deleteProductReference(asset.id),
     onSuccess: onSaved,
   })
   const dirty =
@@ -1514,6 +1548,32 @@ function ProductReferenceCard({
 
   return (
     <div className="grid gap-2 rounded-md border border-zinc-200 p-2">
+      <div className="flex items-center justify-between gap-2">
+        <span className="min-w-0 truncate text-sm font-semibold text-zinc-800">
+          {asset.name}
+        </span>
+        {allowDelete && (
+          <Button
+            type="button"
+            size="sm"
+            variant="default"
+            disabled={deleteMutation.isPending || updateMutation.isPending}
+            onClick={() => {
+              const confirmed = window.confirm(
+                `Delete product reference "${asset.name}"? Existing keyframes will be kept but marked stale.`
+              )
+              if (confirmed) deleteMutation.mutate()
+            }}
+          >
+            {deleteMutation.isPending ? (
+              <Loader2 className="animate-spin" />
+            ) : (
+              <Trash2 />
+            )}
+            Delete
+          </Button>
+        )}
+      </div>
       {asset.imageUrl ? (
         <img
           src={asset.imageUrl}
@@ -1524,6 +1584,11 @@ function ProductReferenceCard({
         <div className="flex aspect-[9/12] items-center justify-center rounded-md bg-zinc-100 text-sm text-zinc-500">
           No image
         </div>
+      )}
+      {deleteMutation.error && (
+        <p className="rounded-md bg-red-50 p-2 text-xs text-red-700">
+          {readMutationError(deleteMutation.error)}
+        </p>
       )}
       <details className="rounded-md border border-zinc-200 p-2">
         <summary className="cursor-pointer text-xs font-semibold text-zinc-700">
@@ -1573,7 +1638,9 @@ function ProductReferenceCard({
           <Button
             size="sm"
             variant="outline"
-            disabled={updateMutation.isPending || !dirty}
+            disabled={
+              updateMutation.isPending || deleteMutation.isPending || !dirty
+            }
             onClick={() => updateMutation.mutate()}
           >
             {updateMutation.isPending ? (
@@ -1583,6 +1650,11 @@ function ProductReferenceCard({
             )}
             Save Ref{dirty ? " *" : ""}
           </Button>
+          {updateMutation.error && (
+            <p className="rounded-md bg-red-50 p-2 text-xs text-red-700">
+              {readMutationError(updateMutation.error)}
+            </p>
+          )}
         </div>
       </details>
     </div>
@@ -2017,6 +2089,10 @@ function SceneCard({
     mutationFn: () => updateScene(scene.id, draft),
     onSuccess: onSaved,
   })
+  const durationMutation = useMutation({
+    mutationFn: (durationSec: number) => updateScene(scene.id, { durationSec }),
+    onSuccess: onSaved,
+  })
   const videoPromptMutation = useMutation({
     mutationFn: () => updateSceneVideoPrompt(scene.id, videoPromptDraft),
     onSuccess: onSaved,
@@ -2058,9 +2134,34 @@ function SceneCard({
           )}
         </div>
         <div className="flex items-center gap-2">
-          <span className="rounded-md bg-zinc-100 px-2 py-1 text-xs text-zinc-600">
-            {scene.durationSec}s
-          </span>
+          <label className="flex items-center gap-1 text-xs text-zinc-600">
+            Duration
+            <select
+              className="h-8 rounded-md border border-zinc-300 bg-white px-2 text-xs text-zinc-800"
+              value={scene.durationSec}
+              disabled={
+                running ||
+                durationMutation.isPending ||
+                updateMutation.isPending
+              }
+              onChange={(event) =>
+                durationMutation.mutate(Number(event.target.value))
+              }
+            >
+              {!SCENE_DURATION_OPTIONS.some(
+                (durationSec) => durationSec === scene.durationSec
+              ) && (
+                <option value={scene.durationSec}>
+                  {scene.durationSec}s (legacy)
+                </option>
+              )}
+              {SCENE_DURATION_OPTIONS.map((durationSec) => (
+                <option key={durationSec} value={durationSec}>
+                  {durationSec}s
+                </option>
+              ))}
+            </select>
+          </label>
           {mode === "keyframes" && sceneDirty && (
             <span className="rounded-md bg-amber-50 px-2 py-1 text-xs font-medium text-amber-700">
               Unsaved changes
@@ -2071,7 +2172,11 @@ function SceneCard({
             <Button
               size="sm"
               variant="outline"
-              disabled={updateMutation.isPending || !sceneDirty}
+              disabled={
+                updateMutation.isPending ||
+                durationMutation.isPending ||
+                !sceneDirty
+              }
               onClick={() => updateMutation.mutate()}
             >
               {updateMutation.isPending ? (
@@ -2084,6 +2189,11 @@ function SceneCard({
           )}
         </div>
       </div>
+      {durationMutation.error && (
+        <p className="mt-2 rounded-md bg-red-50 p-2 text-xs text-red-700">
+          {readMutationError(durationMutation.error)}
+        </p>
+      )}
 
       <div
         className={`mt-4 grid gap-4 ${
@@ -2305,7 +2415,9 @@ function SceneCard({
             </div>
             <Button
               size="sm"
-              disabled={running || !canGenerateVideo}
+              disabled={
+                running || durationMutation.isPending || !canGenerateVideo
+              }
               onClick={() => onGenerateVideo(scene.id)}
             >
               <Video />

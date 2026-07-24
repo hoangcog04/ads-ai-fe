@@ -173,6 +173,12 @@ export async function updateProductReference(
   ) as unknown as AdProject
 }
 
+export async function deleteProductReference(assetId: string) {
+  return httpRequest.delete(
+    `/ads/assets/${assetId}/product-reference`
+  ) as unknown as AdProject
+}
+
 export async function updateReferenceAsset(
   assetId: string,
   payload: Record<string, unknown>
