@@ -2177,23 +2177,24 @@ function SceneList({
           onAssemble={onAssembleVideo}
         />
       )}
-      {project.scenes.map((scene) => (
-        <SceneCard
-          key={scene.id}
-          mode={mode}
-          scene={scene}
-          productReferences={project.assets.filter(
-            (asset) => asset.type === "PRODUCT"
-          )}
-          overlayEnabled={project.overlayEnabled}
-          latestTaskByTarget={latestTaskByTarget}
-          sceneTask={latestTaskByTarget.get(`AdScene:${scene.id}`)}
-          onSaved={onSaved}
-          onReplanScene={onReplanScene}
-          onGenerateVideo={onGenerateVideo}
-          onRefresh={onRefresh}
-        />
-      ))}
+      {(mode !== "videos" || !project.finalVideoUrl) &&
+        project.scenes.map((scene) => (
+          <SceneCard
+            key={scene.id}
+            mode={mode}
+            scene={scene}
+            productReferences={project.assets.filter(
+              (asset) => asset.type === "PRODUCT"
+            )}
+            overlayEnabled={project.overlayEnabled}
+            latestTaskByTarget={latestTaskByTarget}
+            sceneTask={latestTaskByTarget.get(`AdScene:${scene.id}`)}
+            onSaved={onSaved}
+            onReplanScene={onReplanScene}
+            onGenerateVideo={onGenerateVideo}
+            onRefresh={onRefresh}
+          />
+        ))}
     </section>
   )
 }
@@ -2209,29 +2210,35 @@ function FinalVideoPanel({
   isSubmitting: boolean
   onAssemble: () => void
 }) {
-  const allSceneVideosReady =
-    project.scenes.length > 0 &&
-    project.scenes.every((scene) => !!scene.videoUrl && !scene.videoError)
-  const sceneVideoStillRunning = project.tasks.some(
-    (task) => task.type === "AD_SCENE_VIDEO" && isRunning(task)
+  const readySceneVideos = project.scenes.filter(
+    (scene) => !!scene.videoUrl
   )
-  if (!allSceneVideosReady || sceneVideoStillRunning) return null
-
+  const readyVideoCount = readySceneVideos.length
+  const missingVideoCount = project.scenes.length - readyVideoCount
   const running = isSubmitting || isRunning(task)
+
   return (
     <section className="grid gap-3 rounded-lg border border-zinc-200 bg-white p-4 shadow-sm">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
           <h2 className="text-sm font-semibold">Final ad video</h2>
           <p className="text-xs text-zinc-500">
-            Merge {project.scenes.length} scene videos in scene order.
+            {readyVideoCount > 0
+              ? `Merge ${readyVideoCount} available scene video${readyVideoCount === 1 ? "" : "s"} in scene order.`
+              : "Generate at least one scene video to start merging."}
+            {missingVideoCount > 0 &&
+              ` ${missingVideoCount} scene${missingVideoCount === 1 ? "" : "s"} without video will be skipped.`}
           </p>
         </div>
         {task && <TaskBadge task={task} />}
       </div>
-      <Button className="w-fit" disabled={running} onClick={onAssemble}>
+      <Button
+        className="w-fit"
+        disabled={running || readyVideoCount === 0}
+        onClick={onAssemble}
+      >
         {running ? <Loader2 className="animate-spin" /> : <Film />}
-        Merge {project.scenes.length} videos
+        Merge {readyVideoCount} video{readyVideoCount === 1 ? "" : "s"}
       </Button>
       {project.finalVideoUrl && (
         <div className="grid gap-2">
