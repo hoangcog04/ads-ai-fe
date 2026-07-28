@@ -3,6 +3,7 @@ import type {
   AdProject,
   AdProjectListItem,
   CreateAdProjectPayload,
+  KeyframeBatchEnqueueResult,
   RenderManualGuidePayload,
   RenderManualGuideResponse,
   RenderPlanPromptPayload,
@@ -203,6 +204,18 @@ export async function generateKeyframeSlot(slotId: string) {
   return httpRequest.post(
     `/ads/keyframe-slots/${slotId}/generate`
   ) as unknown as AdGenerationTask
+}
+
+export async function generateMissingKeyframes(projectId: string) {
+  return httpRequest.post(
+    `/ads/projects/${projectId}/keyframes/generate-missing`
+  ) as unknown as KeyframeBatchEnqueueResult
+}
+
+export async function regenerateAllKeyframes(projectId: string) {
+  return httpRequest.post(
+    `/ads/projects/${projectId}/keyframes/regenerate-all`
+  ) as unknown as KeyframeBatchEnqueueResult
 }
 
 export async function selectKeyframeSlotCandidate(
