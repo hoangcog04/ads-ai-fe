@@ -116,6 +116,24 @@ export type AdGenerationTask = {
   createdAt: string
 }
 
+export type KeyframeBatchEnqueueResult = {
+  mode: "missing" | "all"
+  totalSlotCount: number
+  queuedCount: number
+  failedCount: number
+  skippedActiveCount: number
+  skippedExistingCount: number
+  queuedSlotIds: string[]
+  failedSlotIds: string[]
+  skippedActiveSlotIds: string[]
+  skippedExistingSlotIds: string[]
+  failures: Array<{
+    slotId: string
+    error: string
+  }>
+  tasks: AdGenerationTask[]
+}
+
 export type AdFlowMedia = {
   id: string
   assetId?: string | null

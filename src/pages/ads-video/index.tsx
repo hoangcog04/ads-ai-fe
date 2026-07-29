@@ -7,10 +7,12 @@ import {
   deleteProductReference,
   generateAsset,
   generateKeyframeSlot,
+  generateMissingKeyframes,
   generateVideo,
   getAdProject,
   importAdPlanJson,
   listAdProjects,
+  regenerateAllKeyframes,
   replanScene,
   runAdPlan,
   selectKeyframeSlotCandidate,
@@ -51,6 +53,7 @@ import type {
   AdProjectListItem,
   AdScene,
   AdVoiceLine,
+  KeyframeBatchEnqueueResult,
   UpdateAdProjectPayload,
 } from "@/types/ads"
 import { resolveMediaUrl } from "@/lib/media-url"
@@ -228,6 +231,16 @@ function AdsVideoPage() {
 
   const productRefUploadMutation = useMutation({
     mutationFn: uploadProductReferences,
+    onSuccess: refreshProject,
+  })
+
+  const generateMissingKeyframesMutation = useMutation({
+    mutationFn: generateMissingKeyframes,
+    onSuccess: refreshProject,
+  })
+
+  const regenerateAllKeyframesMutation = useMutation({
+    mutationFn: regenerateAllKeyframes,
     onSuccess: refreshProject,
   })
 
@@ -564,6 +577,24 @@ function AdsVideoPage() {
             onReplanScene={(sceneId, instruction) =>
               replanMutation.mutate({ sceneId, instruction })
             }
+            onGenerateMissingKeyframes={() =>
+              generateMissingKeyframesMutation.mutate(project.id)
+            }
+            onRegenerateAllKeyframes={() =>
+              regenerateAllKeyframesMutation.mutate(project.id)
+            }
+            isBatchingKeyframes={
+              generateMissingKeyframesMutation.isPending ||
+              regenerateAllKeyframesMutation.isPending
+            }
+            keyframeBatchResult={
+              generateMissingKeyframesMutation.data ||
+              regenerateAllKeyframesMutation.data
+            }
+            keyframeBatchError={readMutationError(
+              generateMissingKeyframesMutation.error ||
+                regenerateAllKeyframesMutation.error
+            )}
             onGenerateVideo={(sceneId) => videoMutation.mutate(sceneId)}
             onAssembleVideo={() => assembleVideoMutation.mutate(project.id)}
             isAssemblingVideo={assembleVideoMutation.isPending}
@@ -2144,6 +2175,11 @@ function SceneList({
   latestTaskByTarget,
   onSaved,
   onReplanScene,
+  onGenerateMissingKeyframes,
+  onRegenerateAllKeyframes,
+  isBatchingKeyframes,
+  keyframeBatchResult,
+  keyframeBatchError,
   onGenerateVideo,
   onAssembleVideo,
   isAssemblingVideo,
@@ -2154,6 +2190,11 @@ function SceneList({
   latestTaskByTarget: Map<string, AdGenerationTask>
   onSaved: (project: AdProject) => void
   onReplanScene: (sceneId: string, instruction: string) => void
+  onGenerateMissingKeyframes: () => void
+  onRegenerateAllKeyframes: () => void
+  isBatchingKeyframes: boolean
+  keyframeBatchResult?: KeyframeBatchEnqueueResult
+  keyframeBatchError: string | null
   onGenerateVideo: (sceneId: string) => void
   onAssembleVideo: () => void
   isAssemblingVideo: boolean
@@ -2167,8 +2208,89 @@ function SceneList({
     )
   }
 
+  const keyframeSlots = project.scenes.flatMap(
+    (scene) => scene.keyframePromptSlots ?? []
+  )
+  const queueableMissingCount = keyframeSlots.filter((slot) => {
+    const task = latestTaskByTarget.get(`AdKeyframePromptSlot:${slot.id}`)
+    return !isRunning(task) && (slot.candidates?.length ?? 0) === 0
+  }).length
+  const queueableRegenerateCount = keyframeSlots.filter((slot) => {
+    const task = latestTaskByTarget.get(`AdKeyframePromptSlot:${slot.id}`)
+    return !isRunning(task)
+  }).length
+
   return (
     <section className="grid gap-4">
+      {mode === "keyframes" && (
+        <section className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-zinc-200 bg-white p-3 shadow-sm">
+          <div>
+            <h2 className="text-sm font-semibold">Batch keyframes</h2>
+            <p className="text-xs text-zinc-500">
+              Generate Missing queues only slots without candidates. Regenerate
+              All keeps existing candidates and adds a new one.
+            </p>
+            {keyframeBatchResult && (
+              <p
+                className={`mt-1 text-xs ${
+                  keyframeBatchResult.failedCount > 0
+                    ? "text-amber-700"
+                    : "text-emerald-700"
+                }`}
+              >
+                Queued {keyframeBatchResult.queuedCount}; skipped{" "}
+                {keyframeBatchResult.skippedActiveCount} active
+                {keyframeBatchResult.skippedExistingCount > 0
+                  ? ` and ${keyframeBatchResult.skippedExistingCount} already generated`
+                  : ""}
+                {keyframeBatchResult.failedCount > 0
+                  ? `; ${keyframeBatchResult.failedCount} failed to enqueue`
+                  : ""}
+                .
+              </p>
+            )}
+            {keyframeBatchError && (
+              <p className="mt-1 text-xs text-red-700">{keyframeBatchError}</p>
+            )}
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={isBatchingKeyframes || queueableMissingCount === 0}
+              onClick={onGenerateMissingKeyframes}
+            >
+              {isBatchingKeyframes ? (
+                <Loader2 className="animate-spin" />
+              ) : (
+                <Sparkles />
+              )}
+              Generate Missing ({queueableMissingCount})
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={isBatchingKeyframes || queueableRegenerateCount === 0}
+              onClick={() => {
+                if (
+                  window.confirm(
+                    `Queue a new candidate for ${queueableRegenerateCount} keyframe slot${queueableRegenerateCount === 1 ? "" : "s"}? Existing candidates will be kept.`
+                  )
+                ) {
+                  onRegenerateAllKeyframes()
+                }
+              }}
+            >
+              {isBatchingKeyframes ? (
+                <Loader2 className="animate-spin" />
+              ) : (
+                <RefreshCw />
+              )}
+              Regenerate All ({queueableRegenerateCount})
+            </Button>
+          </div>
+        </section>
+      )}
       {mode === "videos" && (
         <FinalVideoPanel
           project={project}
@@ -2210,9 +2332,7 @@ function FinalVideoPanel({
   isSubmitting: boolean
   onAssemble: () => void
 }) {
-  const readySceneVideos = project.scenes.filter(
-    (scene) => !!scene.videoUrl
-  )
+  const readySceneVideos = project.scenes.filter((scene) => !!scene.videoUrl)
   const readyVideoCount = readySceneVideos.length
   const missingVideoCount = project.scenes.length - readyVideoCount
   const running = isSubmitting || isRunning(task)
