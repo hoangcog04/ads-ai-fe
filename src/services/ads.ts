@@ -75,6 +75,13 @@ export async function updateAdProject(
   ) as unknown as AdProject
 }
 
+export async function deleteAdProject(projectId: string) {
+  return httpRequest.delete(`/ads/projects/${projectId}`) as unknown as {
+    id: string
+    deletedAt: string
+  }
+}
+
 export async function runAdPlan(projectId: string) {
   return httpRequest.post(
     `/ads/projects/${projectId}/plan`
@@ -204,6 +211,17 @@ export async function generateKeyframeSlot(slotId: string) {
   return httpRequest.post(
     `/ads/keyframe-slots/${slotId}/generate`
   ) as unknown as AdGenerationTask
+}
+
+export async function uploadKeyframeSlotImage(
+  slotId: string,
+  keyframeImage: File
+) {
+  const formData = new FormData()
+  formData.append("keyframeImage", keyframeImage)
+  return httpRequest.post(`/ads/keyframe-slots/${slotId}/upload`, formData, {
+    headers: { "Content-Type": "multipart/form-data" },
+  }) as unknown as AdGenerationTask
 }
 
 export async function generateMissingKeyframes(projectId: string) {

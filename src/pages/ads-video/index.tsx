@@ -4,6 +4,7 @@ import {
   addProductReference,
   assembleVideo,
   createAdProject,
+  deleteAdProject,
   deleteProductReference,
   generateAsset,
   generateKeyframeSlot,
@@ -22,6 +23,7 @@ import {
   updateReferenceAsset,
   updateScene,
   updateSceneVideoPrompt,
+  uploadKeyframeSlotImage,
   uploadProductReferences,
   uploadReferenceAssetImage,
 } from "@/services/ads"
@@ -188,6 +190,32 @@ function AdsVideoPage() {
     },
   })
 
+  const deleteProjectMutation = useMutation({
+    mutationFn: deleteAdProject,
+    onSuccess: (deleted) => {
+      queryClient.removeQueries({ queryKey: ["ads-project", deleted.id] })
+      void queryClient.invalidateQueries({ queryKey: ["ads-projects"] })
+      if (projectId === deleted.id) {
+        setWorkspaceStage("plan")
+        navigate(ROUTES.ADS_VIDEO)
+      }
+    },
+    onError: (error) => {
+      window.alert(readMutationError(error) || "Could not delete project.")
+    },
+  })
+
+  const confirmDeleteProject = (id: string, title?: string | null) => {
+    const displayName = title?.trim() || "Untitled ads project"
+    if (
+      window.confirm(
+        `Delete "${displayName}"? The project will be hidden, but its data and media files will be retained.`
+      )
+    ) {
+      deleteProjectMutation.mutate(id)
+    }
+  }
+
   const planMutation = useMutation({
     mutationFn: runAdPlan,
     onSuccess: refreshProject,
@@ -324,6 +352,12 @@ function AdsVideoPage() {
               projects={projectsQuery.data ?? []}
               isLoading={projectsQuery.isLoading}
               onOpen={(id) => navigate(`${ROUTES.ADS_VIDEO}/${id}`)}
+              deletingProjectId={
+                deleteProjectMutation.isPending
+                  ? deleteProjectMutation.variables
+                  : undefined
+              }
+              onDelete={confirmDeleteProject}
             />
           </div>
         </div>
@@ -428,6 +462,18 @@ function AdsVideoPage() {
             </Button>
             <Button variant="outline" onClick={resetProject}>
               Projects
+            </Button>
+            <Button
+              variant="outline"
+              disabled={deleteProjectMutation.isPending}
+              onClick={() => confirmDeleteProject(project.id, project.title)}
+            >
+              {deleteProjectMutation.isPending ? (
+                <Loader2 className="animate-spin" />
+              ) : (
+                <Trash2 />
+              )}
+              Delete
             </Button>
           </div>
         </header>
@@ -1264,10 +1310,14 @@ function ProjectListPanel({
   projects,
   isLoading,
   onOpen,
+  deletingProjectId,
+  onDelete,
 }: {
   projects: AdProjectListItem[]
   isLoading: boolean
   onOpen: (projectId: string) => void
+  deletingProjectId?: string
+  onDelete: (projectId: string, title?: string | null) => void
 }) {
   return (
     <section className="grid content-start gap-3 rounded-lg border border-zinc-200 bg-white p-4 shadow-sm">
@@ -1293,42 +1343,60 @@ function ProjectListPanel({
       )}
       <div className="grid gap-2">
         {projects.map((project) => (
-          <button
+          <div
             key={project.id}
-            className="grid grid-cols-[56px_minmax(0,1fr)] gap-3 rounded-md border border-zinc-200 p-2 text-left transition hover:border-zinc-900"
-            onClick={() => onOpen(project.id)}
+            className="flex items-start gap-1 rounded-md border border-zinc-200 p-1 transition hover:border-zinc-900"
           >
-            <div className="flex aspect-square items-center justify-center overflow-hidden rounded-md bg-zinc-100">
-              {project.productImageUrl ? (
-                <img
-                  src={resolveMediaUrl(project.productImageUrl)}
-                  alt=""
-                  className="h-full w-full object-cover"
-                />
+            <button
+              className="grid min-w-0 flex-1 grid-cols-[56px_minmax(0,1fr)] gap-3 rounded p-1 text-left"
+              onClick={() => onOpen(project.id)}
+            >
+              <div className="flex aspect-square items-center justify-center overflow-hidden rounded-md bg-zinc-100">
+                {project.productImageUrl ? (
+                  <img
+                    src={resolveMediaUrl(project.productImageUrl)}
+                    alt=""
+                    className="h-full w-full object-cover"
+                  />
+                ) : (
+                  <ImageIcon className="size-5 text-zinc-400" />
+                )}
+              </div>
+              <div className="min-w-0">
+                <div className="truncate text-sm font-semibold">
+                  {project.title || "Untitled ads project"}
+                </div>
+                <div className="mt-1 line-clamp-2 text-xs leading-4 text-zinc-500">
+                  {project.brief}
+                </div>
+                <div className="mt-2 flex flex-wrap gap-1 text-[11px] text-zinc-500">
+                  <span className="rounded bg-zinc-100 px-1.5 py-0.5">
+                    {project.sceneCount} scenes
+                  </span>
+                  <span className="rounded bg-zinc-100 px-1.5 py-0.5">
+                    {project.productReferenceCount} refs
+                  </span>
+                  <span className="rounded bg-zinc-100 px-1.5 py-0.5">
+                    {project.status}
+                  </span>
+                </div>
+              </div>
+            </button>
+            <button
+              type="button"
+              className="inline-flex size-8 shrink-0 items-center justify-center rounded text-zinc-500 hover:bg-red-50 hover:text-red-700 disabled:opacity-50"
+              disabled={deletingProjectId === project.id}
+              title={`Delete ${project.title || "project"}`}
+              aria-label={`Delete ${project.title || "project"}`}
+              onClick={() => onDelete(project.id, project.title)}
+            >
+              {deletingProjectId === project.id ? (
+                <Loader2 className="size-4 animate-spin" />
               ) : (
-                <ImageIcon className="size-5 text-zinc-400" />
+                <Trash2 className="size-4" />
               )}
-            </div>
-            <div className="min-w-0">
-              <div className="truncate text-sm font-semibold">
-                {project.title || "Untitled ads project"}
-              </div>
-              <div className="mt-1 line-clamp-2 text-xs leading-4 text-zinc-500">
-                {project.brief}
-              </div>
-              <div className="mt-2 flex flex-wrap gap-1 text-[11px] text-zinc-500">
-                <span className="rounded bg-zinc-100 px-1.5 py-0.5">
-                  {project.sceneCount} scenes
-                </span>
-                <span className="rounded bg-zinc-100 px-1.5 py-0.5">
-                  {project.productReferenceCount} refs
-                </span>
-                <span className="rounded bg-zinc-100 px-1.5 py-0.5">
-                  {project.status}
-                </span>
-              </div>
-            </div>
-          </button>
+            </button>
+          </div>
         ))}
       </div>
     </section>
@@ -3043,6 +3111,7 @@ function KeyframeSlotCard({
     ),
   })
   const [copiedStableKey, setCopiedStableKey] = useState(false)
+  const uploadInputRef = useRef<HTMLInputElement>(null)
   const copyStableKey = () => {
     void navigator.clipboard
       .writeText(slot.stableKey)
@@ -3065,12 +3134,17 @@ function KeyframeSlotCard({
     mutationFn: () => generateKeyframeSlot(slot.id),
     onSuccess: onRefresh,
   })
+  const uploadMutation = useMutation({
+    mutationFn: (file: File) => uploadKeyframeSlotImage(slot.id, file),
+    onSuccess: onRefresh,
+  })
   const selectMutation = useMutation({
     mutationFn: (candidateId: string) =>
       selectKeyframeSlotCandidate(slot.id, candidateId),
     onSuccess: onSaved,
   })
-  const running = isRunning(task) || generateMutation.isPending
+  const running =
+    isRunning(task) || generateMutation.isPending || uploadMutation.isPending
   const dirty =
     JSON.stringify(draft) !==
     JSON.stringify({
@@ -3225,7 +3299,7 @@ function KeyframeSlotCard({
           ))}
         </div>
       )}
-      <div className="grid grid-cols-2 gap-2">
+      <div className="grid grid-cols-3 gap-2">
         <Button
           size="sm"
           variant="outline"
@@ -3250,15 +3324,45 @@ function KeyframeSlotCard({
           {running ? <Loader2 className="animate-spin" /> : <Camera />}
           Generate
         </Button>
+        <input
+          ref={uploadInputRef}
+          className="hidden"
+          type="file"
+          accept="image/*"
+          onChange={(event) => {
+            const file = event.target.files?.[0]
+            event.currentTarget.value = ""
+            if (file) uploadMutation.mutate(file)
+          }}
+        />
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={running}
+          onClick={() => uploadInputRef.current?.click()}
+        >
+          {uploadMutation.isPending ? (
+            <Loader2 className="animate-spin" />
+          ) : (
+            <Upload />
+          )}
+          Upload
+        </Button>
       </div>
       {slot.selectedCandidate?.warning && (
         <p className="rounded-md bg-amber-50 p-2 text-xs leading-4 text-amber-700">
           {slot.selectedCandidate.warning}
         </p>
       )}
-      {(updateMutation.error || includeMutation.error) && (
+      {(updateMutation.error ||
+        includeMutation.error ||
+        uploadMutation.error) && (
         <p className="rounded-md bg-red-50 p-2 text-xs leading-4 text-red-700">
-          {readMutationError(updateMutation.error || includeMutation.error)}
+          {readMutationError(
+            updateMutation.error ||
+              includeMutation.error ||
+              uploadMutation.error
+          )}
         </p>
       )}
     </div>
