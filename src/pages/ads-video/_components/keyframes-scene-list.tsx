@@ -334,7 +334,13 @@ function KeyframeSceneCard({
               {readMutationError(updateMutation.error)}
             </p>
           )}
-          <details open className="rounded-md border border-zinc-200 p-2">
+          <VoiceLinesEditor
+            voiceLines={draft.voiceLines}
+            onChange={(voiceLines) =>
+              setDraft((prev) => ({ ...prev, voiceLines }))
+            }
+          />
+          <details className="rounded-md border border-zinc-200 p-2">
             <summary className="cursor-pointer text-xs font-semibold text-zinc-700">
               Scene direction
             </summary>
@@ -369,7 +375,7 @@ function KeyframeSceneCard({
               />
             </div>
           </details>
-          <details className="rounded-md border border-zinc-200 p-2">
+          <details className="hidden rounded-md border border-zinc-200 p-2">
             <summary className="cursor-pointer text-xs font-semibold text-zinc-700">
               Camera
             </summary>
@@ -412,12 +418,7 @@ function KeyframeSceneCard({
               )}
             </div>
           </details>
-          <VoiceLinesEditor
-            voiceLines={draft.voiceLines}
-            onChange={(voiceLines) =>
-              setDraft((prev) => ({ ...prev, voiceLines }))
-            }
-          />
+
           <ActingBeatsEditor
             actingBeats={draft.actingBeats}
             onChange={(actingBeats) =>
@@ -478,14 +479,14 @@ function KeyframeSceneCard({
           </details>
         </section>
 
-        <section className="grid content-start gap-3 rounded-md border border-zinc-200 p-3">
+        <section className="grid content-start gap-3 rounded-md border border-zinc-200 p-3 xl:grid-cols-[minmax(0,3fr)_minmax(360px,2fr)]">
           <KeyframeSlots
             scene={{ ...scene, keyframePromptSlots }}
             productReferences={productReferences}
             latestTaskByTarget={latestTaskByTarget}
           />
 
-          <div className="grid gap-3 lg:grid-cols-2">
+          <div className="grid content-start gap-3">
             <section className="grid content-start gap-2 rounded-md border border-zinc-200 p-3">
               <div className="flex items-center justify-between gap-2">
                 <h3 className="text-sm font-semibold text-zinc-800">
@@ -598,7 +599,7 @@ function VoiceLinesEditor({
     )
   }
   return (
-    <details className="rounded-md border border-zinc-200 p-2">
+    <details open className="rounded-md border border-zinc-200 p-2">
       <summary className="cursor-pointer text-xs font-semibold text-zinc-700">
         Voice lines ({voiceLines.length})
       </summary>
@@ -628,38 +629,45 @@ function VoiceLinesEditor({
         </div>
         {voiceLines.map((voiceLine, index) => (
           <div key={index} className="grid gap-2 rounded-md bg-zinc-50 p-2">
-            <div className="grid gap-2">
-              <TextField
-                label="Speaker"
-                value={voiceLine.speaker}
-                onChange={(speaker) => updateLine(index, { speaker })}
-              />
-              <TextField
-                label="Timing"
-                value={voiceLine.timing || ""}
-                onChange={(timing) => updateLine(index, { timing })}
-              />
-              <TextField
-                label="Emotion"
-                value={voiceLine.emotion || ""}
-                onChange={(emotion) => updateLine(index, { emotion })}
-              />
-            </div>
-            <TextField
-              label="Action state"
-              value={voiceLine.actionState || ""}
-              onChange={(actionState) => updateLine(index, { actionState })}
-            />
-            <TextField
-              label="Delivery"
-              value={voiceLine.delivery || ""}
-              onChange={(delivery) => updateLine(index, { delivery })}
-            />
             <TextareaField
               label="Exact line"
               value={voiceLine.line}
               onChange={(line) => updateLine(index, { line })}
             />
+            <details className="rounded-md border border-zinc-200 bg-white p-2">
+              <summary className="cursor-pointer text-xs font-semibold text-zinc-700">
+                More details
+                {voiceLine.speaker ? ` · ${voiceLine.speaker}` : ""}
+                {voiceLine.timing ? ` · ${voiceLine.timing}` : ""}
+              </summary>
+              <div className="mt-2 grid gap-2 border-t border-zinc-100 pt-2">
+                <TextField
+                  label="Speaker"
+                  value={voiceLine.speaker}
+                  onChange={(speaker) => updateLine(index, { speaker })}
+                />
+                <TextField
+                  label="Timing"
+                  value={voiceLine.timing || ""}
+                  onChange={(timing) => updateLine(index, { timing })}
+                />
+                <TextField
+                  label="Emotion"
+                  value={voiceLine.emotion || ""}
+                  onChange={(emotion) => updateLine(index, { emotion })}
+                />
+                <TextField
+                  label="Action state"
+                  value={voiceLine.actionState || ""}
+                  onChange={(actionState) => updateLine(index, { actionState })}
+                />
+                <TextField
+                  label="Delivery"
+                  value={voiceLine.delivery || ""}
+                  onChange={(delivery) => updateLine(index, { delivery })}
+                />
+              </div>
+            </details>
           </div>
         ))}
       </div>
@@ -784,7 +792,7 @@ function KeyframeSlots({
           {keyframePromptSlots.length} refs
         </span>
       </div>
-      <div className="grid items-stretch gap-3 xl:grid-cols-2">
+      <div className="grid items-stretch gap-3">
         {keyframePromptSlots.map((slot) => (
           <KeyframeSlotCard
             key={slot.id}
@@ -916,14 +924,14 @@ function KeyframeSlotCard({
       <label className="grid min-w-0 gap-1 text-xs font-medium text-zinc-600">
         Prompt
         <textarea
-          className="h-32 w-full min-w-0 resize-none rounded-md border border-zinc-300 p-2 text-sm leading-5 text-zinc-900"
+          className="min-h-32 w-full min-w-0 rounded-md border border-zinc-300 p-2 text-sm leading-5 text-zinc-900"
           value={draft.prompt}
           onChange={(event) =>
             setDraft((prev) => ({ ...prev, prompt: event.target.value }))
           }
         />
       </label>
-      <details className="rounded-md border border-zinc-200 p-2">
+      <details open className="rounded-md border border-zinc-200 p-2">
         <summary className="cursor-pointer text-xs font-semibold text-zinc-700">
           Product references ({draft.productReferenceIds.length}/
           {productReferences.length})
