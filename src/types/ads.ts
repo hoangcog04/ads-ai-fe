@@ -67,6 +67,15 @@ export type AdKeyframePromptSlot = {
   candidates: AdKeyframeCandidate[]
 }
 
+export type CreateKeyframePromptSlotPayload = {
+  label: string
+  timing?: string
+  purpose?: string
+  prompt: string
+  productReferenceIds?: string[]
+  includeInVideo?: boolean
+}
+
 export type AdScene = {
   id: string
   sceneIndex: number

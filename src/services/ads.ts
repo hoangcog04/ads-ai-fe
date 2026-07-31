@@ -3,6 +3,7 @@ import type {
   AdProject,
   AdProjectListItem,
   CreateAdProjectPayload,
+  CreateKeyframePromptSlotPayload,
   KeyframeBatchEnqueueResult,
   RenderManualGuidePayload,
   RenderManualGuideResponse,
@@ -203,6 +204,16 @@ export async function updateKeyframePromptSlot(
 ) {
   return httpRequest.patch(
     `/ads/keyframe-slots/${slotId}`,
+    payload
+  ) as unknown as AdProject
+}
+
+export async function createKeyframePromptSlot(
+  sceneId: string,
+  payload: CreateKeyframePromptSlotPayload
+) {
+  return httpRequest.post(
+    `/ads/scenes/${sceneId}/keyframe-slots`,
     payload
   ) as unknown as AdProject
 }

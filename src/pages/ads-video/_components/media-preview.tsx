@@ -110,7 +110,7 @@ export function MediaPreview({
       <img
         src={resolvedSrc}
         alt={alt}
-        className="h-full w-full object-cover transition-transform group-hover:scale-105"
+        className="h-full w-full object-cover object-top transition-transform group-hover:scale-105"
       />
       <span className="absolute inset-x-0 bottom-0 bg-black/60 px-2 py-1 text-[10px] font-medium text-white opacity-0 transition-opacity group-hover:opacity-100">
         Preview

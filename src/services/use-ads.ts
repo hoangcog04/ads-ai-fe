@@ -2,6 +2,7 @@ import {
   addProductReference,
   assembleVideo,
   createAdProject,
+  createKeyframePromptSlot,
   deleteAdProject,
   deleteProductReference,
   generateAsset,
@@ -27,7 +28,11 @@ import {
 } from "@/services/ads"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 
-import type { AdGenerationTask, UpdateAdProjectPayload } from "@/types/ads"
+import type {
+  AdGenerationTask,
+  CreateKeyframePromptSlotPayload,
+  UpdateAdProjectPayload,
+} from "@/types/ads"
 
 export const adsKeys = {
   projects: ["ads-projects"] as const,
@@ -344,6 +349,19 @@ export function useUpdateKeyframePromptSlotMutation(
     mutationFn: () => updateKeyframePromptSlot(slotId, getPayload()),
     onSuccess: (project) => {
       queryClient.setQueryData(adsKeys.project(project.id), project)
+    },
+  })
+}
+
+export function useCreateKeyframePromptSlotMutation(sceneId: string) {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (payload: CreateKeyframePromptSlotPayload) =>
+      createKeyframePromptSlot(sceneId, payload),
+    onSuccess: (project) => {
+      queryClient.setQueryData(adsKeys.project(project.id), project)
+      void queryClient.invalidateQueries({ queryKey: adsKeys.projects })
     },
   })
 }

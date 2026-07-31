@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react"
 import {
   isAdTaskRunning,
+  useCreateKeyframePromptSlotMutation,
   useGenerateKeyframeSlotMutation,
   useSelectKeyframeSlotCandidateMutation,
   useSetKeyframeSlotInVideoMutation,
@@ -484,6 +485,7 @@ function KeyframeSceneCard({
             scene={{ ...scene, keyframePromptSlots }}
             productReferences={productReferences}
             latestTaskByTarget={latestTaskByTarget}
+            disabled={running}
           />
 
           <div className="grid content-start gap-3">
@@ -768,30 +770,216 @@ function KeyframeSlots({
   scene,
   productReferences,
   latestTaskByTarget,
+  disabled,
 }: {
   scene: AdScene
   productReferences: AdAsset[]
   latestTaskByTarget: Map<string, AdGenerationTask>
+  disabled: boolean
 }) {
   const keyframePromptSlots = scene.keyframePromptSlots ?? []
-  if (!keyframePromptSlots.length) {
-    return (
-      <div className="rounded-md border border-zinc-200 p-3">
-        <p className="text-sm text-zinc-500">
-          No keyframe slots available. Replan this scene to create them.
-        </p>
-      </div>
-    )
+  const [adding, setAdding] = useState(false)
+  const [draft, setDraft] = useState({
+    label: "",
+    timing: "",
+    purpose: "",
+    prompt: "",
+    productReferenceIds: [] as string[],
+    includeInVideo: true,
+  })
+  const createMutation = useCreateKeyframePromptSlotMutation(scene.id)
+  const canCreate = !!draft.label.trim() && !!draft.prompt.trim()
+
+  const resetDraft = () => {
+    setDraft({
+      label: "",
+      timing: "",
+      purpose: "",
+      prompt: "",
+      productReferenceIds: [],
+      includeInVideo: true,
+    })
+    createMutation.reset()
   }
 
   return (
     <section className="grid gap-2">
       <div className="flex items-center justify-between gap-2">
-        <h3 className="text-sm font-semibold">Keyframe slots</h3>
-        <span className="text-xs text-zinc-500">
-          {keyframePromptSlots.length} refs
-        </span>
+        <div>
+          <h3 className="text-sm font-semibold">Keyframe slots</h3>
+          <span className="text-xs text-zinc-500">
+            {keyframePromptSlots.length} refs
+          </span>
+        </div>
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={disabled || createMutation.isPending}
+          onClick={() => setAdding(true)}
+        >
+          <Plus />
+          Add Slot
+        </Button>
       </div>
+      {adding && (
+        <div className="grid gap-3 rounded-md border border-zinc-300 bg-zinc-50 p-3">
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            <div>
+              <h4 className="text-sm font-semibold">New keyframe slot</h4>
+              <p className="text-xs text-zinc-500">
+                The keyframe ID is generated from the label and stays read-only.
+              </p>
+            </div>
+            <label className="flex h-9 items-center gap-2 text-xs font-medium text-zinc-700">
+              <input
+                type="checkbox"
+                checked={draft.includeInVideo}
+                onChange={(event) =>
+                  setDraft((current) => ({
+                    ...current,
+                    includeInVideo: event.target.checked,
+                  }))
+                }
+              />
+              Use in video
+            </label>
+          </div>
+          <div className="grid gap-2 sm:grid-cols-2">
+            <TextField
+              label="Label"
+              value={draft.label}
+              onChange={(label) =>
+                setDraft((current) => ({ ...current, label }))
+              }
+            />
+            <TextField
+              label="Timing (optional)"
+              value={draft.timing}
+              onChange={(timing) =>
+                setDraft((current) => ({ ...current, timing }))
+              }
+            />
+          </div>
+          <TextareaField
+            label="Purpose (optional)"
+            value={draft.purpose}
+            onChange={(purpose) =>
+              setDraft((current) => ({ ...current, purpose }))
+            }
+          />
+          <TextareaField
+            label="Prompt"
+            value={draft.prompt}
+            onChange={(prompt) =>
+              setDraft((current) => ({ ...current, prompt }))
+            }
+          />
+          <details
+            open
+            className="rounded-md border border-zinc-200 bg-white p-2"
+          >
+            <summary className="cursor-pointer text-xs font-semibold text-zinc-700">
+              Product references ({draft.productReferenceIds.length}/
+              {productReferences.length})
+            </summary>
+            <fieldset className="mt-2 grid gap-2 border-0 border-t border-zinc-100 p-0 pt-2">
+              {productReferences.length ? (
+                <div className="grid max-h-40 gap-x-3 overflow-y-auto pr-1 sm:grid-cols-2">
+                  {productReferences.map((reference) => {
+                    const selected = draft.productReferenceIds.includes(
+                      reference.id
+                    )
+                    return (
+                      <label
+                        key={reference.id}
+                        className="flex min-h-9 items-center gap-2 border-b border-zinc-100 py-1 text-sm text-zinc-800"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={selected}
+                          onChange={(event) =>
+                            setDraft((current) => ({
+                              ...current,
+                              productReferenceIds: event.target.checked
+                                ? [...current.productReferenceIds, reference.id]
+                                : current.productReferenceIds.filter(
+                                    (id) => id !== reference.id
+                                  ),
+                            }))
+                          }
+                        />
+                        <span className="min-w-0 truncate">
+                          {reference.name}
+                        </span>
+                        {reference.kind && (
+                          <span className="ml-auto text-xs text-zinc-400">
+                            {reference.kind}
+                          </span>
+                        )}
+                      </label>
+                    )
+                  })}
+                </div>
+              ) : (
+                <span className="text-xs text-zinc-500">
+                  No product references
+                </span>
+              )}
+            </fieldset>
+          </details>
+          <div className="flex flex-wrap justify-end gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={createMutation.isPending}
+              onClick={() => {
+                setAdding(false)
+                resetDraft()
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              size="sm"
+              disabled={disabled || createMutation.isPending || !canCreate}
+              onClick={() =>
+                createMutation.mutate(
+                  {
+                    ...draft,
+                    timing: draft.timing.trim() || undefined,
+                    purpose: draft.purpose.trim() || undefined,
+                  },
+                  {
+                    onSuccess: () => {
+                      setAdding(false)
+                      resetDraft()
+                    },
+                  }
+                )
+              }
+            >
+              {createMutation.isPending ? (
+                <Loader2 className="animate-spin" />
+              ) : (
+                <Plus />
+              )}
+              Add Slot
+            </Button>
+          </div>
+          {createMutation.error && (
+            <p className="rounded-md bg-red-50 p-2 text-xs leading-4 text-red-700">
+              {readMutationError(createMutation.error)}
+            </p>
+          )}
+        </div>
+      )}
+      {!keyframePromptSlots.length && (
+        <div className="rounded-md border border-zinc-200 p-3">
+          <p className="text-sm text-zinc-500">
+            No keyframe slots available. Add one manually or replan this scene.
+          </p>
+        </div>
+      )}
       <div className="grid items-stretch gap-3">
         {keyframePromptSlots.map((slot) => (
           <KeyframeSlotCard
