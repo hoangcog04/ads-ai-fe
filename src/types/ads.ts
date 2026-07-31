@@ -157,6 +157,7 @@ export type AdProject = {
   voiceLanguage: string
   voiceNote?: string | null
   overlayEnabled: boolean
+  flowAccountEmail?: string | null
   status: string
   productAnalysis?: Record<string, unknown> | null
   finalVideoStorageKey?: string | null
@@ -184,7 +185,7 @@ export type AdProjectListItem = {
 }
 
 export type CreateAdProjectPayload = {
-  brief: string
+  brief?: string
   title?: string
   productContext?: string
   scriptTimeline?: string
@@ -232,7 +233,7 @@ export type PromptExportProductReference = {
 }
 
 export type RenderPlanPromptPayload = {
-  brief: string
+  brief?: string
   title?: string
   productContext?: string
   scriptTimeline?: string

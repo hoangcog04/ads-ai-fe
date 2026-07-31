@@ -14,7 +14,7 @@ import httpRequest from "@/lib/axios"
 
 export async function createAdProject(payload: CreateAdProjectPayload) {
   const formData = new FormData()
-  formData.append("brief", payload.brief)
+  if (payload.brief?.trim()) formData.append("brief", payload.brief)
   formData.append("aspectRatio", payload.aspectRatio)
   formData.append("voiceLanguage", payload.voiceLanguage)
   if (payload.voiceNote) formData.append("voiceNote", payload.voiceNote)

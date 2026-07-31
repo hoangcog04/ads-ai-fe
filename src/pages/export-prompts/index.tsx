@@ -163,11 +163,10 @@ function ExportPromptsPage() {
           >
             <TextField label="Title" value={title} onChange={setTitle} />
             <TextareaField
-              label="Brief"
+              label="Brief (optional)"
               value={brief}
               onChange={setBrief}
               minHeight="min-h-28"
-              required
             />
             <TextareaField
               label="Script / Timeline"
@@ -283,11 +282,7 @@ function ExportPromptsPage() {
             )}
             <Button
               className="w-fit"
-              disabled={
-                planMutation.isPending ||
-                !brief.trim() ||
-                productRefs.length === 0
-              }
+              disabled={planMutation.isPending || productRefs.length === 0}
             >
               {planMutation.isPending ? (
                 <Sparkles className="animate-spin" />
