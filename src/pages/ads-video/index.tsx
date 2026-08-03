@@ -17,10 +17,11 @@ import {
   useUploadProductReferencesMutation,
   useUploadReferenceAssetImageMutation,
 } from "@/services/use-ads"
-import { Loader2, Trash2 } from "lucide-react"
+import { Copy, Loader2, Trash2 } from "lucide-react"
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom"
 
 import type { AdAsset, AdGenerationTask } from "@/types/ads"
+import { useCopyFeedback } from "@/hooks/use-copy-feedback"
 import { Button } from "@/components/ui/button"
 import { FlowLoginControl } from "@/components/flow-login-control"
 
@@ -51,6 +52,7 @@ function AdsVideoPageContent() {
   const { projectId } = useParams<{ projectId?: string }>()
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
+  const { copied: copiedFlowId, copy } = useCopyFeedback()
   const stageParam = searchParams.get("stage")
   const workspaceStage = isWorkspaceStage(stageParam) ? stageParam : "plan"
   const setWorkspaceStage = useCallback(
@@ -274,14 +276,37 @@ function AdsVideoPageContent() {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            {project.flowAccountEmail && (
-              <span
-                className="max-w-64 truncate rounded-full border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-700"
-                title={`Google Flow account: ${project.flowAccountEmail}`}
-              >
-                Flow: {project.flowAccountEmail}
-              </span>
-            )}
+            <div className="flex flex-wrap items-center gap-2">
+              {project.flowProjectId && (
+                <div className="inline-flex items-center gap-2 rounded-full border border-violet-200 bg-violet-50 px-2.5 py-1 text-xs font-medium text-violet-700">
+                  <span title={`Flow Project ID: ${project.flowProjectId}`}>
+                    ID: {project.flowProjectId}
+                  </span>
+
+                  <button
+                    className="inline-flex size-5 shrink-0 items-center justify-center rounded border border-violet-300 bg-white text-violet-700 transition hover:bg-violet-100"
+                    type="button"
+                    title="Copy Flow Project ID"
+                    aria-label={`Copy Flow Project ID ${project.flowProjectId}`}
+                    onClick={() => void copy(project.flowProjectId ?? "")}
+                  >
+                    <Copy className="size-3" />
+                  </button>
+                  {copiedFlowId && (
+                    <span className="text-xs text-emerald-700">Copied</span>
+                  )}
+                </div>
+              )}
+
+              {project.flowAccountEmail && (
+                <span
+                  className="rounded-full border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-700"
+                  title={`Google Flow account: ${project.flowAccountEmail}`}
+                >
+                  Flow: {project.flowAccountEmail}
+                </span>
+              )}
+            </div>
             <FlowLoginControl />
             <Button variant="outline" asChild>
               <Link to={ROUTES.ADS_VIDEO}>Projects</Link>

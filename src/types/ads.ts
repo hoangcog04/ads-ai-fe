@@ -166,6 +166,7 @@ export type AdProject = {
   voiceLanguage: string
   voiceNote?: string | null
   overlayEnabled: boolean
+  flowProjectId?: string | null
   flowAccountEmail?: string | null
   status: string
   productAnalysis?: Record<string, unknown> | null
