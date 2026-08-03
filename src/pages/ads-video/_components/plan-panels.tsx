@@ -298,13 +298,11 @@ export function PlanJsonPanel({ project }: { project: AdProject }) {
       })),
       primaryCharacter: {
         name: character?.name || "Primary character",
-        description: character?.description || "",
         imagePrompt: character?.imagePrompt || "",
         consistencyPrompt: character?.consistencyPrompt || "",
       },
       primaryLocation: {
         name: location?.name || "Primary location",
-        description: location?.description || "",
         imagePrompt: location?.imagePrompt || "",
         consistencyPrompt: location?.consistencyPrompt || "",
       },

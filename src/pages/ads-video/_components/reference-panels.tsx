@@ -328,38 +328,26 @@ export function ReferenceCard({
 }) {
   const running = isAdTaskRunning(task)
   const lowerLabel = label.toLowerCase()
-  const descriptionLabel = lowerLabel.includes("location")
-    ? "Location description"
-    : "Character description"
   const lockLabel = lowerLabel.includes("location")
     ? "Location lock"
     : "Identity lock"
   const [draft, setDraft] = useState({
     name: asset?.name || "",
-    description: asset?.description || "",
     imagePrompt: asset?.imagePrompt || "",
     consistencyPrompt: asset?.consistencyPrompt || "",
   })
   useEffect(() => {
     setDraft({
       name: asset?.name || "",
-      description: asset?.description || "",
       imagePrompt: asset?.imagePrompt || "",
       consistencyPrompt: asset?.consistencyPrompt || "",
     })
-  }, [
-    asset?.id,
-    asset?.name,
-    asset?.description,
-    asset?.imagePrompt,
-    asset?.consistencyPrompt,
-  ])
+  }, [asset?.id, asset?.name, asset?.imagePrompt, asset?.consistencyPrompt])
   const updateMutation = useUpdateReferenceAssetMutation(asset?.id, () => draft)
   const dirty =
     JSON.stringify(draft) !==
     JSON.stringify({
       name: asset?.name || "",
-      description: asset?.description || "",
       imagePrompt: asset?.imagePrompt || "",
       consistencyPrompt: asset?.consistencyPrompt || "",
     })
@@ -387,9 +375,6 @@ export function ReferenceCard({
           thumbnailClassName="mx-auto aspect-[4/5] h-auto w-[90%]"
         />
       </div>
-      <p className="mt-2 line-clamp-3 text-xs leading-4 text-zinc-600">
-        {asset?.description || "Waiting for plan"}
-      </p>
       {asset && (
         <details className="mt-3 rounded-md border border-zinc-200 p-2">
           <summary className="cursor-pointer text-xs font-semibold text-zinc-700">
@@ -406,13 +391,6 @@ export function ReferenceCard({
               value={draft.imagePrompt}
               onChange={(imagePrompt) =>
                 setDraft((prev) => ({ ...prev, imagePrompt }))
-              }
-            />
-            <TextareaField
-              label={descriptionLabel}
-              value={draft.description}
-              onChange={(description) =>
-                setDraft((prev) => ({ ...prev, description }))
               }
             />
             <TextareaField

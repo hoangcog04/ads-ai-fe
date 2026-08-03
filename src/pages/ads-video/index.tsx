@@ -18,7 +18,7 @@ import {
   useUploadReferenceAssetImageMutation,
 } from "@/services/use-ads"
 import { Loader2, Trash2 } from "lucide-react"
-import { useNavigate, useParams, useSearchParams } from "react-router-dom"
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom"
 
 import type { AdAsset, AdGenerationTask } from "@/types/ads"
 import { Button } from "@/components/ui/button"
@@ -114,11 +114,6 @@ function AdsVideoPageContent() {
   const assembleVideoMutation = useAssembleVideoMutation()
   const replanMutation = useReplanSceneMutation()
 
-  const resetProject = () => {
-    setWorkspaceStage("plan")
-    navigate(ROUTES.ADS_VIDEO)
-  }
-
   useEffect(() => {
     if (!project) return
     const nextCharacter = project.assets.find(
@@ -179,7 +174,6 @@ function AdsVideoPageContent() {
             <ProjectListPanel
               projects={projectsQuery.data ?? []}
               isLoading={projectsQuery.isLoading}
-              onOpen={(id) => navigate(`${ROUTES.ADS_VIDEO}/${id}`)}
               deletingProjectId={
                 deleteProjectMutation.isPending
                   ? deleteProjectMutation.variables
@@ -205,12 +199,8 @@ function AdsVideoPageContent() {
           ) : (
             <div className="grid gap-3">
               <p className="font-medium text-red-700">Project not found.</p>
-              <Button
-                className="w-fit"
-                variant="outline"
-                onClick={resetProject}
-              >
-                Back to projects
+              <Button className="w-fit" variant="outline" asChild>
+                <Link to={ROUTES.ADS_VIDEO}>Back to projects</Link>
               </Button>
             </div>
           )}
@@ -293,8 +283,8 @@ function AdsVideoPageContent() {
               </span>
             )}
             <FlowLoginControl />
-            <Button variant="outline" onClick={resetProject}>
-              Projects
+            <Button variant="outline" asChild>
+              <Link to={ROUTES.ADS_VIDEO}>Projects</Link>
             </Button>
             <Button
               variant="outline"

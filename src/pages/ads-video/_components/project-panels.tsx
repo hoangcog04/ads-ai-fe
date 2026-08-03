@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from "react"
+import { ROUTES } from "@/constants"
 import { Film, ImageIcon, Loader2, Trash2, Upload } from "lucide-react"
+import { Link } from "react-router-dom"
 
 import type { AdProjectListItem } from "@/types/ads"
 import { resolveMediaUrl } from "@/lib/media-url"
@@ -30,13 +32,11 @@ type ProductImageDraft = {
 export function ProjectListPanel({
   projects,
   isLoading,
-  onOpen,
   deletingProjectId,
   onDelete,
 }: {
   projects: AdProjectListItem[]
   isLoading: boolean
-  onOpen: (projectId: string) => void
   deletingProjectId?: string
   onDelete: (projectId: string, title?: string | null) => void
 }) {
@@ -68,9 +68,9 @@ export function ProjectListPanel({
             key={project.id}
             className="flex items-start gap-1 rounded-md border border-zinc-200 p-1 transition hover:border-zinc-900"
           >
-            <button
+            <Link
+              to={`${ROUTES.ADS_VIDEO}/${project.id}`}
               className="grid min-w-0 flex-1 grid-cols-[56px_minmax(0,1fr)] gap-3 rounded p-1 text-left"
-              onClick={() => onOpen(project.id)}
             >
               <div className="flex aspect-square items-center justify-center overflow-hidden rounded-md bg-zinc-100">
                 {project.productImageUrl ? (
@@ -102,7 +102,7 @@ export function ProjectListPanel({
                   </span>
                 </div>
               </div>
-            </button>
+            </Link>
             <button
               type="button"
               className="inline-flex size-8 shrink-0 items-center justify-center rounded text-zinc-500 hover:bg-red-50 hover:text-red-700 disabled:opacity-50"
@@ -417,7 +417,7 @@ export function BriefPanel({
       {error && <p className="text-sm text-red-600">{error}</p>}
       <Button
         className="w-fit"
-        disabled={isSubmitting || !brief || productRefs.length === 0}
+        disabled={isSubmitting || productRefs.length === 0}
       >
         {isSubmitting ? <Loader2 className="animate-spin" /> : <Upload />}
         Create Project
