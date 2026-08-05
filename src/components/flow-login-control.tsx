@@ -1,6 +1,7 @@
-import { useEffect, useState, type FormEvent } from "react"
+import { useState, type FormEvent } from "react"
 import {
-  getFlowConnection,
+  FLOW_CONNECTIONS_QUERY_KEY,
+  getFlowConnections,
   loginFlow,
   logoutFlow,
   type FlowConnection,
@@ -13,145 +14,129 @@ import {
   Loader2,
   LogIn,
   LogOut,
+  Plus,
+  RefreshCw,
   X,
 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 
-type FlowErrorResponse = {
-  code?: string
-  message?: string
-}
+type FlowErrorResponse = { code?: string; message?: string }
 
-const FLOW_CONNECTION_QUERY_KEY = ["flow-connection"] as const
-
-export function FlowLoginControl() {
+export function FlowLoginControl({
+  open: controlledOpen,
+  onOpenChange,
+}: {
+  open?: boolean
+  onOpenChange?: (open: boolean) => void
+} = {}) {
   const queryClient = useQueryClient()
-  const [open, setOpen] = useState(false)
+  const [internalOpen, setInternalOpen] = useState(false)
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
-  const connectionQuery = useQuery({
-    queryKey: FLOW_CONNECTION_QUERY_KEY,
-    queryFn: getFlowConnection,
-    refetchInterval: (query) =>
-      query.state.data?.status === "CONNECTING" ? 1_000 : false,
-  })
-  const connection = connectionQuery.data
+  const [retryConnectionId, setRetryConnectionId] = useState<string | null>(
+    null
+  )
+  const open = controlledOpen ?? internalOpen
+  const setOpen = (next: boolean) => {
+    setInternalOpen(next)
+    onOpenChange?.(next)
+  }
 
-  useEffect(() => {
-    if (connection?.email) {
-      setEmail((currentEmail) => currentEmail || connection.email || "")
-    }
-  }, [connection?.email])
+  const connectionsQuery = useQuery({
+    queryKey: FLOW_CONNECTIONS_QUERY_KEY,
+    queryFn: getFlowConnections,
+    refetchInterval: (query) =>
+      query.state.data?.some((connection) => connection.status === "CONNECTING")
+        ? 1_000
+        : false,
+  })
+  const connections = connectionsQuery.data ?? []
+  const connectedCount = connections.filter(
+    (connection) => connection.status === "CONNECTED"
+  ).length
+
+  const refreshConnections = () =>
+    queryClient.invalidateQueries({ queryKey: FLOW_CONNECTIONS_QUERY_KEY })
 
   const loginMutation = useMutation({
     mutationFn: () => loginFlow(email.trim(), password),
-    onSuccess: (nextConnection) => {
-      queryClient.setQueryData(FLOW_CONNECTION_QUERY_KEY, nextConnection)
+    onSuccess: async () => {
       setPassword("")
+      setEmail("")
+      setRetryConnectionId(null)
+      await refreshConnections()
     },
-    onError: () => {
-      void queryClient.invalidateQueries({
-        queryKey: FLOW_CONNECTION_QUERY_KEY,
-      })
-    },
+    onError: refreshConnections,
   })
-
   const logoutMutation = useMutation({
     mutationFn: logoutFlow,
-    onSuccess: (nextConnection) => {
-      queryClient.setQueryData(FLOW_CONNECTION_QUERY_KEY, nextConnection)
-      setEmail("")
-      setPassword("")
-    },
-    onError: () => {
-      void queryClient.invalidateQueries({
-        queryKey: FLOW_CONNECTION_QUERY_KEY,
-      })
-    },
+    onSuccess: refreshConnections,
+    onError: refreshConnections,
   })
 
-  const submit = (event: FormEvent) => {
-    event.preventDefault()
-    if (
-      !email.trim() ||
-      !password ||
-      loginMutation.isPending ||
-      logoutMutation.isPending
-    ) {
-      return
-    }
-    loginMutation.mutate()
-  }
-
-  const logout = () => {
-    if (
-      !window.confirm(
-        `Clear only the local Flow ${formatSessionStore(connection?.logoutTarget)}? The other session store will be kept.`
-      )
-    ) {
-      return
-    }
-    logoutMutation.mutate()
-  }
-
-  const connected = connection?.status === "CONNECTED"
   const busy =
     loginMutation.isPending ||
     logoutMutation.isPending ||
-    connection?.status === "CONNECTING"
+    connections.some((connection) => connection.status === "CONNECTING")
+  const retryConnection = connections.find(
+    (connection) => connection.id === retryConnectionId
+  )
   const mutationError =
     readFlowError(loginMutation.error) || readFlowError(logoutMutation.error)
-  const visibleError = mutationError || connection?.lastError
+
+  const submit = (event: FormEvent) => {
+    event.preventDefault()
+    if (!email.trim() || !password || loginMutation.isPending) return
+    loginMutation.mutate()
+  }
+
+  const retry = (connection: FlowConnection) => {
+    setRetryConnectionId(connection.id)
+    setEmail(connection.email)
+    setPassword("")
+    loginMutation.reset()
+  }
 
   return (
     <>
       <Button
         type="button"
-        variant={connected ? "outline" : "secondary"}
+        variant={connectedCount ? "outline" : "secondary"}
         onClick={() => setOpen(true)}
       >
         {busy ? (
           <Loader2 className="animate-spin" />
-        ) : connected ? (
+        ) : connectedCount ? (
           <CheckCircle2 className="text-emerald-600" />
         ) : (
           <LogIn />
         )}
-        {busy
-          ? "Flow connecting..."
-          : connected
-            ? `Flow: ${connection.email || "Connected"}`
-            : "Login Flow"}
+        Flow accounts: {connectedCount}/{connections.length}
       </Button>
 
       {open && (
         <div
           className="fixed inset-0 z-50 grid place-items-center bg-black/50 px-4 py-8"
-          role="presentation"
-          onMouseDown={(event) => {
-            if (event.target === event.currentTarget && !busy) {
-              setOpen(false)
-            }
-          }}
+          onMouseDown={(event) =>
+            event.target === event.currentTarget && !busy && setOpen(false)
+          }
         >
           <section
-            aria-labelledby="flow-login-title"
             aria-modal="true"
-            className="w-full max-w-md rounded-xl border border-zinc-200 bg-white p-5 shadow-xl"
+            className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-xl border border-zinc-200 bg-white p-5 shadow-xl"
             role="dialog"
           >
             <div className="flex items-start justify-between gap-3">
               <div>
-                <h2 id="flow-login-title" className="text-lg font-semibold">
-                  Google Flow login
-                </h2>
+                <h2 className="text-lg font-semibold">Google Flow accounts</h2>
                 <p className="mt-1 text-xs leading-5 text-zinc-500">
-                  Credentials run once in Playwright. Password is not stored.
+                  Each project stays bound to one account. Passwords are never
+                  stored.
                 </p>
               </div>
               <Button
-                aria-label="Close Flow login"
+                aria-label="Close Flow accounts"
                 disabled={busy}
                 size="icon"
                 type="button"
@@ -162,18 +147,81 @@ export function FlowLoginControl() {
               </Button>
             </div>
 
-            <FlowStatus
-              connection={connection}
-              loading={connectionQuery.isLoading}
-            />
+            <div className="mt-4 grid gap-2">
+              {connectionsQuery.isLoading && (
+                <p className="text-sm text-zinc-500">Loading accounts...</p>
+              )}
+              {connections.map((connection) => (
+                <div
+                  key={connection.id}
+                  className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-zinc-200 p-3"
+                >
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium">
+                      {connection.email}
+                    </p>
+                    <p className="mt-1 text-xs text-zinc-500">
+                      {connection.status}
+                    </p>
+                    {connection.lastError && (
+                      <p className="mt-1 text-xs text-red-600">
+                        {connection.lastError}
+                      </p>
+                    )}
+                  </div>
+                  <div className="flex gap-2">
+                    {connection.status !== "CONNECTED" && (
+                      <Button
+                        size="sm"
+                        type="button"
+                        variant="outline"
+                        disabled={busy}
+                        onClick={() => retry(connection)}
+                      >
+                        <RefreshCw />
+                        Retry
+                      </Button>
+                    )}
+                    {connection.status === "CONNECTED" && (
+                      <Button
+                        size="sm"
+                        type="button"
+                        variant="destructive"
+                        disabled={busy}
+                        onClick={() => {
+                          if (
+                            window.confirm(
+                              `Clear the local Flow session for ${connection.email}?`
+                            )
+                          )
+                            logoutMutation.mutate(connection.id)
+                        }}
+                      >
+                        <LogOut />
+                        Logout
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
 
-            <form className="mt-4 grid gap-3" onSubmit={submit}>
+            <form
+              className="mt-5 grid gap-3 border-t border-zinc-200 pt-4"
+              onSubmit={submit}
+            >
+              <div className="flex items-center gap-2 text-sm font-semibold">
+                <Plus className="size-4" />
+                {retryConnection
+                  ? `Retry ${retryConnection.email}`
+                  : "Add Flow account"}
+              </div>
               <label className="grid gap-1 text-xs font-medium text-zinc-600">
                 Google email
                 <input
                   autoComplete="email"
-                  className="h-10 rounded-md border border-zinc-300 px-3 text-sm text-zinc-900"
-                  disabled={busy}
+                  className="h-10 rounded-md border border-zinc-300 px-3 text-sm"
+                  disabled={busy || !!retryConnection}
                   required
                   type="email"
                   value={email}
@@ -184,7 +232,7 @@ export function FlowLoginControl() {
                 Google password
                 <input
                   autoComplete="current-password"
-                  className="h-10 rounded-md border border-zinc-300 px-3 text-sm text-zinc-900"
+                  className="h-10 rounded-md border border-zinc-300 px-3 text-sm"
                   disabled={busy}
                   required
                   type="password"
@@ -192,54 +240,44 @@ export function FlowLoginControl() {
                   onChange={(event) => setPassword(event.target.value)}
                 />
               </label>
-
-              {visibleError && (
-                <div className="rounded-md bg-red-50 p-3 text-xs leading-5 text-red-700">
-                  <span className="inline-flex items-center gap-1 font-semibold">
-                    <AlertTriangle className="size-3.5" />
-                    Flow session action failed
-                  </span>
-                  <p className="mt-1">{visibleError}</p>
-                  {connection?.lastDebugScreenshotKey && (
-                    <code className="mt-1 block break-all text-[11px] text-red-600">
-                      Debug: {connection.lastDebugScreenshotKey}
-                    </code>
-                  )}
+              {mutationError && (
+                <div className="rounded-md bg-red-50 p-3 text-xs text-red-700">
+                  <AlertTriangle className="mr-1 inline size-3.5" />
+                  {mutationError}
                 </div>
               )}
-
-              <Button
-                disabled={busy || !email.trim() || !password}
-                type="submit"
-              >
-                {busy ? <Loader2 className="animate-spin" /> : <LogIn />}
-                {busy ? "Signing in..." : "Login Google Flow"}
-              </Button>
-            </form>
-
-            <div className="mt-4 border-t border-zinc-200 pt-4">
-              <p className="text-xs leading-5 text-zinc-500">
-                Logout clears only the configured{" "}
-                <strong>{formatSessionStore(connection?.logoutTarget)}</strong>.
-                The other local session store is kept.
-              </p>
-              <Button
-                className="mt-3 w-full"
-                disabled={busy}
-                type="button"
-                variant="destructive"
-                onClick={logout}
-              >
-                {logoutMutation.isPending ? (
-                  <Loader2 className="animate-spin" />
-                ) : (
-                  <LogOut />
+              <div className="flex gap-2">
+                {retryConnection && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={busy}
+                    onClick={() => {
+                      setRetryConnectionId(null)
+                      setEmail("")
+                      setPassword("")
+                    }}
+                  >
+                    Cancel retry
+                  </Button>
                 )}
-                {logoutMutation.isPending
-                  ? "Clearing Flow session..."
-                  : "Logout & clear Flow session"}
-              </Button>
-            </div>
+                <Button
+                  disabled={busy || !email.trim() || !password}
+                  type="submit"
+                >
+                  {loginMutation.isPending ? (
+                    <Loader2 className="animate-spin" />
+                  ) : (
+                    <LogIn />
+                  )}
+                  {loginMutation.isPending
+                    ? "Signing in..."
+                    : retryConnection
+                      ? "Retry login"
+                      : "Login & add"}
+                </Button>
+              </div>
+            </form>
           </section>
         </div>
       )}
@@ -247,41 +285,9 @@ export function FlowLoginControl() {
   )
 }
 
-function FlowStatus({
-  connection,
-  loading,
-}: {
-  connection?: FlowConnection
-  loading: boolean
-}) {
-  const color =
-    connection?.status === "CONNECTED"
-      ? "bg-emerald-50 text-emerald-700"
-      : connection?.status === "CONNECTING"
-        ? "bg-blue-50 text-blue-700"
-        : connection?.status === "REQUIRES_2FA"
-          ? "bg-amber-50 text-amber-700"
-          : "bg-zinc-100 text-zinc-600"
-  return (
-    <div className="mt-4 flex items-center justify-between gap-3 rounded-md border border-zinc-200 p-3 text-xs">
-      <span className="text-zinc-500">Saved session</span>
-      <span className={`rounded px-2 py-1 font-medium ${color}`}>
-        {loading ? "LOADING" : connection?.status || "DISCONNECTED"}
-      </span>
-    </div>
-  )
-}
-
 function readFlowError(error: unknown) {
   if (!error) return null
-  if (axios.isAxiosError<FlowErrorResponse>(error)) {
+  if (axios.isAxiosError<FlowErrorResponse>(error))
     return error.response?.data?.message || error.message
-  }
-  return error instanceof Error ? error.message : "Flow login failed"
-}
-
-function formatSessionStore(value?: "profile" | "storage-state") {
-  return value === "storage-state"
-    ? "storage-state.json"
-    : "persistent Chrome profile"
+  return error instanceof Error ? error.message : "Flow account action failed"
 }

@@ -17,6 +17,7 @@ import {
   runAdPlan,
   selectKeyframeSlotCandidate,
   updateAdProject,
+  updateAdProjectFlowConnection,
   updateKeyframePromptSlot,
   updateProductReference,
   updateReferenceAsset,
@@ -109,6 +110,24 @@ export function useUpdateAdProjectMutation() {
       id: string
       payload: UpdateAdProjectPayload
     }) => updateAdProject(id, payload),
+    onSuccess: (project) => {
+      queryClient.setQueryData(adsKeys.project(project.id), project)
+      void queryClient.invalidateQueries({ queryKey: adsKeys.projects })
+    },
+  })
+}
+
+export function useUpdateAdProjectFlowConnectionMutation() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: ({
+      projectId,
+      flowConnectionId,
+    }: {
+      projectId: string
+      flowConnectionId: string
+    }) => updateAdProjectFlowConnection(projectId, flowConnectionId),
     onSuccess: (project) => {
       queryClient.setQueryData(adsKeys.project(project.id), project)
       void queryClient.invalidateQueries({ queryKey: adsKeys.projects })

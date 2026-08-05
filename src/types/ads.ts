@@ -167,6 +167,12 @@ export type AdProject = {
   voiceNote?: string | null
   overlayEnabled: boolean
   flowProjectId?: string | null
+  flowConnectionId?: string | null
+  flowConnection?: {
+    id: string
+    email: string
+    status: string
+  } | null
   flowAccountEmail?: string | null
   status: string
   productAnalysis?: Record<string, unknown> | null
@@ -195,6 +201,7 @@ export type AdProjectListItem = {
 }
 
 export type CreateAdProjectPayload = {
+  flowConnectionId: string
   brief?: string
   title?: string
   productContext?: string

@@ -15,6 +15,7 @@ import httpRequest from "@/lib/axios"
 
 export async function createAdProject(payload: CreateAdProjectPayload) {
   const formData = new FormData()
+  formData.append("flowConnectionId", payload.flowConnectionId)
   if (payload.brief?.trim()) formData.append("brief", payload.brief)
   formData.append("aspectRatio", payload.aspectRatio)
   formData.append("voiceLanguage", payload.voiceLanguage)
@@ -74,6 +75,15 @@ export async function updateAdProject(
     `/ads/projects/${projectId}`,
     payload
   ) as unknown as AdProject
+}
+
+export async function updateAdProjectFlowConnection(
+  projectId: string,
+  flowConnectionId: string
+) {
+  return httpRequest.patch(`/ads/projects/${projectId}/flow-connection`, {
+    flowConnectionId,
+  }) as unknown as AdProject
 }
 
 export async function deleteAdProject(projectId: string) {

@@ -9,7 +9,7 @@ export type FlowConnectionStatus =
 
 export type FlowConnection = {
   id: string
-  email: string | null
+  email: string
   status: FlowConnectionStatus
   hasStorageState: boolean
   connectedAt: string | null
@@ -21,21 +21,23 @@ export type FlowConnection = {
   logoutTarget: "profile" | "storage-state"
 }
 
-export function getFlowConnection() {
+export const FLOW_CONNECTIONS_QUERY_KEY = ["flow-connections"] as const
+
+export function getFlowConnections() {
   return httpRequest.get(
-    "/flow-connection"
-  ) as unknown as Promise<FlowConnection>
+    "/flow-connections"
+  ) as unknown as Promise<FlowConnection[]>
 }
 
 export function loginFlow(email: string, password: string) {
-  return httpRequest.post("/flow-connection/login", {
+  return httpRequest.post("/flow-connections/login", {
     email,
     password,
   }) as unknown as Promise<FlowConnection>
 }
 
-export function logoutFlow() {
+export function logoutFlow(flowConnectionId: string) {
   return httpRequest.post(
-    "/flow-connection/logout"
+    `/flow-connections/${flowConnectionId}/logout`
   ) as unknown as Promise<FlowConnection>
 }

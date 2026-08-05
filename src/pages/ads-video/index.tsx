@@ -1,5 +1,9 @@
-import { useCallback, useEffect, useMemo } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { ROUTES } from "@/constants"
+import {
+  FLOW_CONNECTIONS_QUERY_KEY,
+  getFlowConnections,
+} from "@/services/flow-connection"
 import {
   isAdTaskRunning,
   useAdProjectQuery,
@@ -13,10 +17,12 @@ import {
   useRegenerateAllKeyframesMutation,
   useReplanSceneMutation,
   useRunAdPlanMutation,
+  useUpdateAdProjectFlowConnectionMutation,
   useUpdateAdProjectMutation,
   useUploadProductReferencesMutation,
   useUploadReferenceAssetImageMutation,
 } from "@/services/use-ads"
+import { useQuery } from "@tanstack/react-query"
 import { Copy, Loader2, Trash2 } from "lucide-react"
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom"
 
@@ -53,6 +59,7 @@ function AdsVideoPageContent() {
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
   const { copied: copiedFlowId, copy } = useCopyFeedback()
+  const [flowAccountsOpen, setFlowAccountsOpen] = useState(false)
   const stageParam = searchParams.get("stage")
   const workspaceStage = isWorkspaceStage(stageParam) ? stageParam : "plan"
   const setWorkspaceStage = useCallback(
@@ -70,6 +77,14 @@ function AdsVideoPageContent() {
   )
   const projectsQuery = useAdsProjectsQuery()
   const projectQuery = useAdProjectQuery(projectId)
+  const flowConnectionsQuery = useQuery({
+    queryKey: FLOW_CONNECTIONS_QUERY_KEY,
+    queryFn: getFlowConnections,
+    refetchInterval: (query) =>
+      query.state.data?.some((connection) => connection.status === "CONNECTING")
+        ? 1_000
+        : false,
+  })
 
   const project = projectQuery.data
   const latestTaskByTarget = useMemo(() => {
@@ -83,6 +98,7 @@ function AdsVideoPageContent() {
 
   const createMutation = useCreateAdProjectMutation()
   const deleteProjectMutation = useDeleteAdProjectMutation()
+  const flowBindingMutation = useUpdateAdProjectFlowConnectionMutation()
 
   const confirmDeleteProject = (id: string, title?: string | null) => {
     const displayName = title?.trim() || "Untitled ads project"
@@ -158,12 +174,17 @@ function AdsVideoPageContent() {
       <main className="min-h-screen bg-zinc-50 px-4 py-6 text-zinc-950">
         <div className="mx-auto grid max-w-7xl gap-4">
           <div className="flex justify-end">
-            <FlowLoginControl />
+            <FlowLoginControl
+              open={flowAccountsOpen}
+              onOpenChange={setFlowAccountsOpen}
+            />
           </div>
           <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
             <BriefPanel
               isSubmitting={createMutation.isPending}
               error={readMutationError(createMutation.error)}
+              flowConnections={flowConnectionsQuery.data ?? []}
+              onManageFlowAccounts={() => setFlowAccountsOpen(true)}
               onCreate={(payload) =>
                 createMutation.mutate(payload, {
                   onSuccess: (created) => {
@@ -252,6 +273,22 @@ function AdsVideoPageContent() {
         : false
     )
   const canAdvanceToKeyframes = hasUploadedReferenceSet && !referencesBusy
+  const hasActiveFlowBindingTask = project.tasks.some(
+    (task) =>
+      isAdTaskRunning(task) &&
+      [
+        "AD_CHARACTER_REF_IMAGE",
+        "AD_LOCATION_REF_IMAGE",
+        "AD_PRODUCT_REF_UPLOAD",
+        "AD_KEYFRAME_PROMPT_SLOT_IMAGE",
+        "AD_SCENE_VIDEO",
+      ].includes(task.type)
+  )
+  const connectedFlowConnections = (flowConnectionsQuery.data ?? []).filter(
+    (connection) => connection.status === "CONNECTED"
+  )
+  const canChangeFlowConnection =
+    !project.flowProjectId && !hasActiveFlowBindingTask
 
   const confirmRebuildPlan = () => {
     if (!hasDownstream) return true
@@ -298,16 +335,45 @@ function AdsVideoPageContent() {
                 </div>
               )}
 
-              {project.flowAccountEmail && (
+              {(project.flowConnection?.email || project.flowAccountEmail) && (
                 <span
                   className="rounded-full border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-700"
-                  title={`Google Flow account: ${project.flowAccountEmail}`}
+                  title={`Google Flow account: ${project.flowConnection?.email || project.flowAccountEmail}`}
                 >
-                  Flow: {project.flowAccountEmail}
+                  Flow:{" "}
+                  {project.flowConnection?.email || project.flowAccountEmail}
                 </span>
               )}
+              {canChangeFlowConnection ? (
+                <select
+                  className="h-9 max-w-64 rounded-md border border-zinc-300 bg-white px-2 text-xs"
+                  disabled={flowBindingMutation.isPending}
+                  value={project.flowConnectionId ?? ""}
+                  onChange={(event) => {
+                    if (!event.target.value) return
+                    flowBindingMutation.mutate({
+                      projectId: project.id,
+                      flowConnectionId: event.target.value,
+                    })
+                  }}
+                >
+                  <option value="">Select Flow account</option>
+                  {connectedFlowConnections.map((connection) => (
+                    <option key={connection.id} value={connection.id}>
+                      {connection.email}
+                    </option>
+                  ))}
+                </select>
+              ) : project.flowProjectId && !project.flowConnectionId ? (
+                <span className="rounded bg-amber-50 px-2 py-1 text-xs text-amber-700">
+                  Legacy Flow project needs manual account binding
+                </span>
+              ) : null}
             </div>
-            <FlowLoginControl />
+            <FlowLoginControl
+              open={flowAccountsOpen}
+              onOpenChange={setFlowAccountsOpen}
+            />
             <Button variant="outline" asChild>
               <Link to={ROUTES.ADS_VIDEO}>Projects</Link>
             </Button>

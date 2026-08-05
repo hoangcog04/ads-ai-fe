@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { ROUTES } from "@/constants"
+import type { FlowConnection } from "@/services/flow-connection"
 import { Film, ImageIcon, Loader2, Trash2, Upload } from "lucide-react"
 import { Link } from "react-router-dom"
 
@@ -127,11 +128,16 @@ export function ProjectListPanel({
 export function BriefPanel({
   isSubmitting,
   error,
+  flowConnections,
+  onManageFlowAccounts,
   onCreate,
 }: {
   isSubmitting: boolean
   error?: string | null
+  flowConnections: FlowConnection[]
+  onManageFlowAccounts: () => void
   onCreate: (payload: {
+    flowConnectionId: string
     brief?: string
     title?: string
     productContext?: string
@@ -163,7 +169,29 @@ export function BriefPanel({
   const [voiceNote, setVoiceNote] = useState("")
   const [overlayEnabled, setOverlayEnabled] = useState(false)
   const [productRefs, setProductRefs] = useState<ProductImageDraft[]>([])
+  const [flowConnectionId, setFlowConnectionId] = useState("")
   const productRefsRef = useRef<ProductImageDraft[]>([])
+  const connectedFlowConnections = useMemo(
+    () =>
+      flowConnections.filter((connection) => connection.status === "CONNECTED"),
+    [flowConnections]
+  )
+
+  useEffect(() => {
+    if (
+      flowConnectionId &&
+      connectedFlowConnections.some(
+        (connection) => connection.id === flowConnectionId
+      )
+    ) {
+      return
+    }
+    setFlowConnectionId(
+      connectedFlowConnections.length === 1
+        ? connectedFlowConnections[0].id
+        : ""
+    )
+  }, [connectedFlowConnections, flowConnectionId])
 
   useEffect(() => {
     productRefsRef.current = productRefs
@@ -213,7 +241,7 @@ export function BriefPanel({
       className="grid gap-4 rounded-lg border border-zinc-200 bg-white p-4 shadow-sm"
       onSubmit={(event) => {
         event.preventDefault()
-        if (productRefs.length === 0) return
+        if (productRefs.length === 0 || !flowConnectionId) return
         const productReferencesMeta = productRefs.map((ref) => ({
           name: ref.name,
           kind: ref.kind,
@@ -222,6 +250,7 @@ export function BriefPanel({
         const [durationRangeMinSec, durationRangeMaxSec] =
           splitDurationRange(durationRange)
         onCreate({
+          flowConnectionId,
           brief,
           title,
           productContext: buildProductContext(productReferencesMeta),
@@ -244,6 +273,38 @@ export function BriefPanel({
         <h1 className="text-lg font-semibold">Ads Video Workspace</h1>
       </div>
       <TextField label="Title" value={title} onChange={setTitle} />
+
+      <div className="grid gap-2 rounded-md border border-zinc-200 bg-zinc-50 p-3">
+        <label className="grid gap-1 text-sm">
+          <span className="font-medium">Google Flow account</span>
+          <select
+            className="h-10 rounded-md border border-zinc-300 bg-white px-3"
+            disabled={connectedFlowConnections.length === 0}
+            required
+            value={flowConnectionId}
+            onChange={(event) => setFlowConnectionId(event.target.value)}
+          >
+            <option value="">
+              {connectedFlowConnections.length
+                ? "Select a connected account"
+                : "No connected Flow account"}
+            </option>
+            {connectedFlowConnections.map((connection) => (
+              <option key={connection.id} value={connection.id}>
+                {connection.email}
+              </option>
+            ))}
+          </select>
+        </label>
+        <Button
+          className="w-fit"
+          type="button"
+          variant="outline"
+          onClick={onManageFlowAccounts}
+        >
+          Manage Flow accounts
+        </Button>
+      </div>
 
       <label className="grid gap-1 text-sm">
         <span className="font-medium">Script / Timeline</span>
@@ -417,7 +478,7 @@ export function BriefPanel({
       {error && <p className="text-sm text-red-600">{error}</p>}
       <Button
         className="w-fit"
-        disabled={isSubmitting || productRefs.length === 0}
+        disabled={isSubmitting || productRefs.length === 0 || !flowConnectionId}
       >
         {isSubmitting ? <Loader2 className="animate-spin" /> : <Upload />}
         Create Project
