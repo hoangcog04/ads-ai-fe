@@ -1,16 +1,17 @@
 import { ROUTES } from "@/constants"
-import { RequireAuth } from "@/layouts/components/require-auth"
-import { clearTokens } from "@/utils/token"
-import { LogOut } from "lucide-react"
+import { useAuth } from "@/contexts/auth-context"
+import { RequireAuth } from "@/layouts/guards/require-auth"
+import { KeyRound, LogOut } from "lucide-react"
 import { Outlet, useNavigate } from "react-router-dom"
 
 import { Button } from "@/components/ui/button"
 
 export function PrivateLayout() {
   const navigate = useNavigate()
+  const { logout, user } = useAuth()
 
-  const logout = () => {
-    clearTokens()
+  const handleLogout = () => {
+    logout()
     navigate(ROUTES.LOGIN, { replace: true })
   }
 
@@ -18,15 +19,22 @@ export function PrivateLayout() {
     <RequireAuth>
       <>
         <Outlet />
-        <Button
-          className="fixed bottom-4 right-4 z-40 shadow-lg"
-          type="button"
-          variant="outline"
-          onClick={logout}
-        >
-          <LogOut />
-          Sign out
-        </Button>
+        <div className="fixed bottom-4 right-4 z-40 flex gap-2">
+          {user?.role === "ADMIN" && (
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => navigate(ROUTES.ADMIN_LLM_KEYS)}
+            >
+              <KeyRound />
+              LLM Keys
+            </Button>
+          )}
+          <Button type="button" variant="outline" onClick={handleLogout}>
+            <LogOut />
+            Sign out
+          </Button>
+        </div>
       </>
     </RequireAuth>
   )

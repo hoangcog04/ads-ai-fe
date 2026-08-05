@@ -8,5 +8,5 @@ export const ROUTES = {
   LOGIN: "/login",
   ADS_VIDEO: "/ads-video",
   EXPORT_PROMPTS: "/export-prompts",
-  LEGACY_PRODUCT: "/product",
+  ADMIN_LLM_KEYS: "/admin/llm-keys",
 }

@@ -1,7 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react"
 import { ROUTES } from "@/constants"
+import { useAuth } from "@/contexts/auth-context"
 import { login } from "@/services/auth"
-import { getAccessToken, getRefreshToken, setTokens } from "@/utils/token"
 import axios from "axios"
 import { AlertCircle, Loader2, LogIn } from "lucide-react"
 import { useLocation, useNavigate } from "react-router-dom"
@@ -14,6 +14,7 @@ type LoginLocationState = { from?: string }
 function LoginPage() {
   const navigate = useNavigate()
   const location = useLocation()
+  const { authenticate, isAuthenticated } = useAuth()
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [submitting, setSubmitting] = useState(false)
@@ -22,10 +23,10 @@ function LoginPage() {
     (location.state as LoginLocationState | null)?.from || ROUTES.ADS_VIDEO
 
   useEffect(() => {
-    if (getAccessToken() && getRefreshToken()) {
+    if (isAuthenticated) {
       navigate(destination, { replace: true })
     }
-  }, [destination, navigate])
+  }, [destination, isAuthenticated, navigate])
 
   const submit = async (event: FormEvent) => {
     event.preventDefault()
@@ -34,7 +35,7 @@ function LoginPage() {
     setError(null)
     try {
       const tokens = await login(email.trim(), password)
-      setTokens(tokens.accessToken, tokens.refreshToken)
+      authenticate(tokens)
       navigate(destination, { replace: true })
     } catch (requestError) {
       if (axios.isAxiosError<{ message?: string }>(requestError)) {
