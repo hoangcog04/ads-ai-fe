@@ -8,5 +8,6 @@ export const ROUTES = {
   LOGIN: "/login",
   ADS_VIDEO: "/ads-video",
   EXPORT_PROMPTS: "/export-prompts",
+  ADMIN_FLOW_CONNECTIONS: "/admin/flow-connections",
   ADMIN_LLM_KEYS: "/admin/llm-keys",
 }

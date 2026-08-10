@@ -2,6 +2,7 @@ import { ROUTES } from "@/constants"
 import { AuthProvider } from "@/contexts/auth-context"
 import { RequireAdmin } from "@/layouts/guards/require-admin"
 import { PrivateLayout } from "@/layouts/private-layout"
+import AdminFlowConnectionsPage from "@/pages/admin/flow-connections"
 import LlmApiKeysPage from "@/pages/admin/llm-api-keys"
 import AdsVideoPage from "@/pages/ads-video"
 import ExportPromptsPage from "@/pages/export-prompts"
@@ -33,6 +34,14 @@ export function AppRouters() {
             <Route
               path={ROUTES.EXPORT_PROMPTS}
               element={<ExportPromptsPage />}
+            />
+            <Route
+              path={ROUTES.ADMIN_FLOW_CONNECTIONS}
+              element={
+                <RequireAdmin>
+                  <AdminFlowConnectionsPage />
+                </RequireAdmin>
+              }
             />
             <Route
               path={ROUTES.ADMIN_LLM_KEYS}
