@@ -19,7 +19,7 @@ export function PrivateLayout() {
     <RequireAuth>
       <>
         <Outlet />
-        <div className="fixed bottom-4 right-4 z-40 flex gap-2">
+        <div className="fixed bottom-4 right-4 z-40 flex flex-wrap items-center justify-end gap-2">
           {user?.role === "ADMIN" && (
             <>
               <Button
@@ -40,9 +40,14 @@ export function PrivateLayout() {
               </Button>
             </>
           )}
-          <Button type="button" variant="outline" onClick={handleLogout}>
+          <Button
+            type="button"
+            variant="outline"
+            title={user ? `Sign out ${user.email}` : "Sign out"}
+            onClick={handleLogout}
+          >
             <LogOut />
-            Sign out
+            {user?.email || "Sign out"}
           </Button>
         </div>
       </>
