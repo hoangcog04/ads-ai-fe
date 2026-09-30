@@ -9,6 +9,10 @@ import { Button } from "@/components/ui/button"
 export function PrivateLayout() {
   const navigate = useNavigate()
   const { logout, user } = useAuth()
+  const userIdentifier =
+    user?.email && user?.username
+      ? `${user.email} · ${user.username}`
+      : user?.email ?? user?.username
 
   const handleLogout = () => {
     logout()
@@ -43,11 +47,11 @@ export function PrivateLayout() {
           <Button
             type="button"
             variant="outline"
-            title={user ? `Sign out ${user.email}` : "Sign out"}
+            title={userIdentifier ? `Sign out ${userIdentifier}` : "Sign out"}
             onClick={handleLogout}
           >
             <LogOut />
-            {user?.email || "Sign out"}
+            {userIdentifier || "Sign out"}
           </Button>
         </div>
       </>

@@ -7,15 +7,16 @@ export type AuthTokens = {
 
 export type AuthUser = {
   id: string
-  email: string
+  email: string | null
+  username: string | null
   firstname: string | null
   lastname: string | null
   role: "ADMIN" | "USER"
 }
 
-export function login(email: string, password: string) {
+export function login(identifier: string, password: string) {
   return httpRequest.post("/auth/login", {
-    email,
+    identifier,
     password,
   }) as unknown as Promise<AuthTokens>
 }

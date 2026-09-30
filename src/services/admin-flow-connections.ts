@@ -2,7 +2,8 @@ import httpRequest from "@/lib/axios"
 
 export type AdminFlowConnectionUser = {
   id: string
-  email: string
+  email: string | null
+  username: string | null
   role: "ADMIN" | "USER"
 }
 
@@ -16,7 +17,7 @@ export type AdminFlowStorageStateImportPayload = {
 export type AdminFlowStorageStateImportResult = {
   id: string
   userId: string
-  userEmail: string
+  userEmail: string | null
   email: string
   status: "CONNECTED"
   storageStateKey: string

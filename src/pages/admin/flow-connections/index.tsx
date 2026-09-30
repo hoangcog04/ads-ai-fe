@@ -181,7 +181,9 @@ function AdminFlowConnectionsPage() {
                   <option value="">Select an app user</option>
                   {usersQuery.data?.map((user) => (
                     <option key={user.id} value={user.id}>
-                      {user.email} ({user.role})
+                      {user.email && user.username
+                        ? `${user.email} · ${user.username}`
+                        : user.email ?? user.username} ({user.role})
                     </option>
                   ))}
                 </select>

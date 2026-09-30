@@ -15,7 +15,7 @@ function LoginPage() {
   const navigate = useNavigate()
   const location = useLocation()
   const { authenticate, isAuthenticated } = useAuth()
-  const [email, setEmail] = useState("")
+  const [identifier, setIdentifier] = useState("")
   const [password, setPassword] = useState("")
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -34,7 +34,7 @@ function LoginPage() {
     setSubmitting(true)
     setError(null)
     try {
-      const tokens = await login(email.trim(), password)
+      const tokens = await login(identifier.trim(), password)
       authenticate(tokens)
       navigate(destination, { replace: true })
     } catch (requestError) {
@@ -63,14 +63,14 @@ function LoginPage() {
 
         <form className="grid gap-4" onSubmit={submit}>
           <label className="grid gap-1.5 text-sm font-medium">
-            Email
+            Email or username
             <Input
-              autoComplete="email"
+              autoComplete="username"
               disabled={submitting}
               required
-              type="email"
-              value={email}
-              onChange={(event) => setEmail(event.target.value)}
+              type="text"
+              value={identifier}
+              onChange={(event) => setIdentifier(event.target.value)}
             />
           </label>
           <label className="grid gap-1.5 text-sm font-medium">
